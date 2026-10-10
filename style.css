@@ -119,6 +119,10 @@ input, select, textarea {
   border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; min-height: 40px; width: 100%;
 }
 label.field { display: block; }
+label.field > span.pw-wrap, .pw-wrap { display: flex; gap: 6px; align-items: stretch; margin: 0; font-size: inherit; color: inherit; }
+.pw-wrap input { flex: 1; min-width: 0; }
+.pw-toggle { flex: none; padding: 0 12px; }
+input.pw.masked { -webkit-text-security: disc; text-security: disc; }
 label.field > span { display: block; font-size: 13px; color: var(--text-2); margin-bottom: 4px; }
 .form-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

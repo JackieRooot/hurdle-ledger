@@ -37,8 +37,8 @@
         <label class="field"><span>首笔资金日期</span><input id="n-date" type="date" required></label>
         <label class="field"><span>管理人首笔投入 A（元）</span><input id="n-a" type="number" step="0.01" min="0.01" inputmode="decimal" required></label>
         <label class="field"><span>出资人首笔投入 B（元）</span><input id="n-b" type="number" step="0.01" min="0.01" inputmode="decimal" required></label>
-        <label class="field"><span>设置密码</span><input id="n-pw" type="password" autocomplete="new-password" required minlength="8"></label>
-        <label class="field"><span>再次输入密码</span><input id="n-pw2" type="password" autocomplete="new-password" required minlength="8"></label>
+        <label class="field"><span>设置密码</span><input id="n-pw" type="text" class="pw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required minlength="8"></label>
+        <label class="field"><span>再次输入密码</span><input id="n-pw2" type="text" class="pw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required minlength="8"></label>
       </div>
       <p class="small muted">门槛 6%，分成 25%。密码至少 8 位，请使用足够长、不易猜到的密码（仓库是公开的，任何人都能下载密文尝试破解）。忘记密码将无法恢复数据。</p>
       <button class="primary" type="submit">创建</button>
@@ -47,7 +47,7 @@
 
     <form id="load-form" class="card" autocomplete="off">
       <h3>加载现有数据</h3>
-      <label class="field"><span>密码</span><input id="l-pw" type="password" autocomplete="current-password" required></label>
+      <label class="field"><span>密码</span><input id="l-pw" type="text" class="pw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
       <div class="row form-actions">
         <button class="primary" type="submit">从本站加载 data.enc</button>
         <label class="btn">选择本地文件…<input id="l-file" type="file" accept=".enc" class="hidden"></label>
@@ -165,9 +165,9 @@
   <h3>修改密码</h3>
   <form id="pw-form" autocomplete="off">
     <div class="form-grid">
-      <label class="field"><span>当前密码</span><input id="pw-old" type="password" required></label>
-      <label class="field"><span>新密码（至少 8 位）</span><input id="pw-new" type="password" autocomplete="new-password" minlength="8" required></label>
-      <label class="field"><span>再次输入新密码</span><input id="pw-new2" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label class="field"><span>当前密码</span><input id="pw-old" type="text" class="pw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
+      <label class="field"><span>新密码（至少 8 位）</span><input id="pw-new" type="text" class="pw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" minlength="8" required></label>
+      <label class="field"><span>再次输入新密码</span><input id="pw-new2" type="text" class="pw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" minlength="8" required></label>
     </div>
     <p class="small muted">所有截图都需要用新密码重新加密。下一步会从本站下载每张截图，用旧密码解密，再用新密码加密，最后和 data.enc 一起导出。</p>
     <div class="row form-actions">
@@ -194,11 +194,12 @@
 <script type="module">
 import { compute, emptyData, quarterOf, isValidDate, dayNum, isYearEnd, todayStr } from './calc.js';
 import { encryptJSON, decryptJSON, encryptBytes, decryptBytes, imageMime, WrongPasswordError } from './crypto.js';
-import { renderDashboard, money, units, navf, esc, describeWhere } from './view.js';
+import { renderDashboard, money, units, navf, esc, describeWhere, setupPasswordFields } from './view.js';
 import { makeZip } from './zip.js';
 import { GitHubRepo, detectRepo, gitBlobSha } from './github.js';
 
 const $ = (id) => document.getElementById(id);
+setupPasswordFields();
 
 // ───── 状态（只在内存中） ─────
 let password = null;

@@ -14,7 +14,7 @@
     <h1>共同账户账本</h1>
     <form id="login-form" autocomplete="off">
       <label class="field"><span>密码</span>
-        <input id="pw" type="password" autocomplete="current-password" required autofocus>
+        <input id="pw" type="text" class="pw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus>
       </label>
       <button class="primary" type="submit" id="login-btn">解密查看</button>
       <div id="login-msg" class="small"></div>
@@ -43,9 +43,10 @@
 <script type="module">
 import { compute } from './calc.js';
 import { decryptJSON, decryptBytes, imageMime, WrongPasswordError } from './crypto.js';
-import { renderDashboard, esc } from './view.js';
+import { renderDashboard, esc, setupPasswordFields } from './view.js';
 
 const $ = (id) => document.getElementById(id);
+setupPasswordFields();
 // 解密后的数据只保存在内存中（这两个变量），不写入任何存储
 let password = null;
 let data = null;

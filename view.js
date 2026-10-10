@@ -13,6 +13,30 @@ export const signed = (x, f = money) => (ok(x) ? `<span class="${x > 0.00005 ? '
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+// 密码框用普通文本框（type="text"），这样输入法和输入法里的短语可以正常使用；
+// 旁边的按钮可以切换为圆点遮挡（CSS 遮挡，仍是文本框，输入法照常可用）。
+export function setupPasswordFields(root = document) {
+  root.querySelectorAll('input.pw').forEach((input) => {
+    if (input.dataset.pwReady) return;
+    input.dataset.pwReady = '1';
+    const wrap = document.createElement('span');
+    wrap.className = 'pw-wrap';
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pw-toggle';
+    const sync = () => {
+      const masked = input.classList.contains('masked');
+      btn.textContent = masked ? '显示' : '隐藏';
+      btn.setAttribute('aria-label', masked ? '显示密码' : '隐藏密码');
+    };
+    btn.addEventListener('click', () => { input.classList.toggle('masked'); sync(); input.focus(); });
+    wrap.appendChild(btn);
+    sync();
+  });
+}
+
 const ownerName = (S, o) => esc(S.names[o] || o);
 const typeName = (t) => (t === 'deposit' ? '注资' : '提取');
 
