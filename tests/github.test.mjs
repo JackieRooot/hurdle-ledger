@@ -100,3 +100,12 @@ test('新建数据集时仓库里已有 data.enc 会被拒绝', async () => {
   await assert.rejects(repo.commit({ files: [{ path: 'data.enc', bytes: new Uint8Array([2]) }], message: 'm', expect: { path: 'data.enc', sha: null } }), /被别处修改/);
   assert.deepEqual(gh.read('data.enc'), new Uint8Array([1]));
 });
+
+test('从本地文件加载后首次发布：仓库里还没有 data.enc 时允许', async () => {
+  const gh = fakeGitHub({ 'index.html': new Uint8Array([7]) });
+  const repo = new GitHubRepo({ owner: 'o', repo: 'r', token: 'T', fetchImpl: gh.fetchImpl });
+  await repo.commit({ files: [{ path: 'data.enc', bytes: new Uint8Array([5]) }], message: 'm', expect: { path: 'data.enc', sha: ['f'.repeat(40), null] } });
+  assert.deepEqual(gh.read('data.enc'), new Uint8Array([5]));
+  // 仓库里已有另一个版本时仍然拒绝
+  await assert.rejects(repo.commit({ files: [{ path: 'data.enc', bytes: new Uint8Array([6]) }], message: 'm', expect: { path: 'data.enc', sha: ['f'.repeat(40), null] } }), /被别处修改/);
+});

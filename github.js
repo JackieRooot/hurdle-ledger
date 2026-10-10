@@ -113,13 +113,15 @@ export class GitHubRepo {
    * 一次提交多个文件。
    * @param files   [{ path, bytes }]
    * @param deletes [path]
-   * @param expect  { path, sha }：提交前确认该文件仍是这个版本（防止覆盖别处的修改）；sha 为 null 表示应当不存在
+   * @param expect  { path, sha }：提交前确认该文件仍是这个版本（防止覆盖别处的修改）；sha 为 null 表示应当不存在，
+   *                也可以是数组，表示其中任意一个都可以
    */
   async commit({ files = [], deletes = [], message, expect }) {
     const head = await this.headCommit();
     if (expect) {
       const cur = await this.fileSha(expect.path, head.tree);
-      if (cur !== expect.sha) {
+      const okShas = Array.isArray(expect.sha) ? expect.sha : [expect.sha];
+      if (!okShas.includes(cur)) {
         throw new GitHubError('仓库中的 data.enc 已经被别处修改过（例如在另一台设备上发布过）。为避免覆盖，请重新加载最新数据后再修改。', 409);
       }
     }

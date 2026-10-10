@@ -244,7 +244,7 @@ $('new-form').addEventListener('submit', (e) => {
 });
 
 // ───── 加载 ─────
-async function loadFrom(getBytes) {
+async function loadFrom(getBytes, fromFile = false) {
   const msg = $('load-msg');
   const pw = $('l-pw').value;
   if (!pw) return setMsg(msg, '请先输入密码。');
@@ -252,7 +252,8 @@ async function loadFrom(getBytes) {
   try {
     const buf = new Uint8Array(await getBytes());
     const d = await decryptJSON(pw, buf);
-    baseDataSha = await gitBlobSha(buf);
+    // 从本地文件加载时，仓库里可能还没有上传这个文件：允许仓库中“没有 data.enc”或“正是这个文件”
+    baseDataSha = fromFile ? [await gitBlobSha(buf), null] : await gitBlobSha(buf);
     if (!d || !d.inception) throw new Error('文件内容不是有效的账本数据。');
     d.flows = d.flows || []; d.snapshots = d.snapshots || [];
     password = pw; data = d; dirty = false;
@@ -274,7 +275,7 @@ $('load-form').addEventListener('submit', (e) => {
 });
 $('l-file').addEventListener('change', (e) => {
   const f = e.target.files[0];
-  if (f) loadFrom(() => f.arrayBuffer());
+  if (f) loadFrom(() => f.arrayBuffer(), true);
   e.target.value = '';
 });
 
