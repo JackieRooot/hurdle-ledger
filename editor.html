@@ -122,7 +122,7 @@
       <div class="msg" id="snap-msg"></div>
     </form>
     <div class="table-wrap" style="margin-top:12px"><table>
-      <thead><tr><th>日期</th><th class="left">期间</th><th>账户总值</th><th>净值</th><th class="left">截图</th><th class="left">备注</th><th class="left">操作</th></tr></thead>
+      <thead><tr><th>日期</th><th class="left">期间</th><th>账户总值</th><th>净值</th><th class="left">截图</th><th class="left">备注</th><th class="left" data-nosort>操作</th></tr></thead>
       <tbody id="snap-list"></tbody>
     </table></div>
 
@@ -145,7 +145,7 @@
       <div class="msg" id="flow-msg"></div>
     </form>
     <div class="table-wrap" style="margin-top:12px"><table>
-      <thead><tr><th>日期</th><th class="left">谁</th><th class="left">类型</th><th>金额</th><th>当时总值</th><th>当时净值</th><th>份数</th><th class="left">备注</th><th class="left">操作</th></tr></thead>
+      <thead><tr><th>日期</th><th class="left">谁</th><th class="left">类型</th><th>金额</th><th>当时总值</th><th>当时净值</th><th>份数</th><th class="left">备注</th><th class="left" data-nosort>操作</th></tr></thead>
       <tbody id="flow-list"></tbody>
     </table></div>
     <p class="small muted">同一天的多笔资金流动按列表中的先后顺序计算，每笔使用自己的“当时账户总值”。</p>
@@ -197,7 +197,7 @@
 <script type="module">
 import { compute, emptyData, quarterOf, isValidDate, dayNum, isYearEnd, todayStr } from './calc.js';
 import { encryptJSON, decryptJSON, encryptBytes, decryptBytes, imageMime, WrongPasswordError } from './crypto.js';
-import { renderDashboard, money, units, navf, esc, describeWhere, setupPasswordFields } from './view.js';
+import { renderDashboard, money, units, navf, esc, describeWhere, setupPasswordFields, makeSortable } from './view.js';
 import { makeZip } from './zip.js';
 import { GitHubRepo, detectRepo, gitBlobSha } from './github.js';
 
@@ -517,6 +517,18 @@ function renderLists(res) {
       <td class="actions left"><button type="button" data-ef="${i}">编辑</button> <button type="button" class="danger" data-df="${i}">删除</button></td></tr>`;
   });
   $('flow-list').innerHTML = flowRows.length ? flowRows.reverse().join('') : '<tr><td colspan="9" class="left muted">暂无</td></tr>';
+  sortableOnce($('snap-list').closest('table'), 'edit-snaps');
+  sortableOnce($('flow-list').closest('table'), 'edit-flows');
+}
+
+// 表头只需要绑定一次；之后每次重新生成列表时按当前选择的排序重新排列
+const sorters = new Map();
+function sortableOnce(table, key) {
+  // 清掉上一次添加的排序标记和事件：重新克隆表头
+  const old = table.tHead.rows[0];
+  if (sorters.has(key)) table.tHead.replaceChild(sorters.get(key).cloneNode(true), old);
+  else sorters.set(key, old.cloneNode(true));
+  makeSortable(table, key);
 }
 
 $('snap-list').addEventListener('click', (e) => {

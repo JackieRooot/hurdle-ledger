@@ -123,6 +123,9 @@ label.field > span.pw-wrap, .pw-wrap { display: flex; gap: 6px; align-items: str
 .pw-wrap input { flex: 1; min-width: 0; }
 .pw-toggle { flex: none; padding: 0 12px; }
 input.pw.masked { -webkit-text-security: disc; text-security: disc; }
+th.sortable { cursor: pointer; user-select: none; -webkit-user-select: none; }
+th.sortable:hover { color: var(--text); }
+th .sort-ind { display: inline-block; min-width: 1em; margin-left: 2px; font-size: 10px; color: var(--accent); }
 .sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); border: 0; white-space: nowrap; }
 label.field > span { display: block; font-size: 13px; color: var(--text-2); margin-bottom: 4px; }
 .form-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }

@@ -47,6 +47,55 @@ export function setupPasswordFields(root = document) {
   });
 }
 
+// ───── 表格排序：点表头排序，再点一次反向；默认按日期（第一列）新的在上 ─────
+const sortState = new Map(); // 表格 key → { col, dir }，重新渲染后保持用户选的排序
+
+function cellValue(td) {
+  if (!td) return null;
+  const raw = (td.dataset.v ?? td.textContent).trim();
+  if (raw === '' || raw === '—' || raw === '无') return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const n = Number(raw.replace(/（[^）]*）/g, '').replace(/[¥,%+\s]/g, '').replace(/^[−-]/, '-'));
+  return Number.isFinite(n) ? n : raw;
+}
+
+export function makeSortable(table, key) {
+  const ths = [...table.tHead.rows[0].cells];
+  const tbody = table.tBodies[0];
+  const rows = [...tbody.rows];
+  const empty = rows.length === 1 && rows[0].cells.length === 1;
+  const apply = () => {
+    const st = sortState.get(key) || { col: 0, dir: 'desc' };
+    ths.forEach((th, i) => {
+      const ind = th.querySelector('.sort-ind');
+      if (ind) ind.textContent = i === st.col ? (st.dir === 'desc' ? '▼' : '▲') : '';
+      th.setAttribute('aria-sort', i === st.col ? (st.dir === 'desc' ? 'descending' : 'ascending') : 'none');
+    });
+    if (empty) return;
+    const sign = st.dir === 'desc' ? -1 : 1;
+    const keyed = rows.map((r, i) => ({ r, i, v: cellValue(r.cells[st.col]) }));
+    keyed.sort((a, b) => {
+      // 空值总在最后；同值时保持原顺序（同一天的资金流动保持录入顺序）
+      if (a.v == null || b.v == null) return a.v == null && b.v == null ? a.i - b.i : a.v == null ? 1 : -1;
+      const c = typeof a.v === 'number' && typeof b.v === 'number' ? a.v - b.v : String(a.v).localeCompare(String(b.v), 'zh-CN');
+      return c !== 0 ? sign * c : (st.dir === 'desc' ? a.i - b.i : b.i - a.i);
+    });
+    tbody.append(...keyed.map((k) => k.r));
+  };
+  ths.forEach((th, i) => {
+    if (th.hasAttribute('data-nosort')) return;
+    th.classList.add('sortable');
+    th.title = '点击排序';
+    th.insertAdjacentHTML('beforeend', '<span class="sort-ind"></span>');
+    th.addEventListener('click', () => {
+      const st = sortState.get(key) || { col: 0, dir: 'desc' };
+      sortState.set(key, st.col === i ? { col: i, dir: st.dir === 'desc' ? 'asc' : 'desc' } : { col: i, dir: 'desc' });
+      apply();
+    });
+  });
+  apply();
+}
+
 const ownerName = (S, o) => esc(S.names[o] || o);
 const typeName = (t) => (t === 'deposit' ? '注资' : '提取');
 
@@ -135,8 +184,8 @@ export function renderDashboard(root, data, res, opts = {}) {
 
   // 季度明细
   const snaps = res.snapshots.filter((r) => !r.error);
-  html.push(`<h2>季度明细</h2><p class="small muted">有截图的行可点击查看截图。</p>
-  <div class="table-wrap"><table>
+  html.push(`<h2>季度明细</h2><p class="small muted">有截图的行可点击查看截图。点表头可以排序。</p>
+  <div class="table-wrap"><table id="tbl-snaps">
     <thead><tr><th>日期</th><th class="left">期间</th><th>账户总值</th><th>净值</th><th>相对上期</th><th>相对期初</th><th>${N.me}价值</th><th>${N.friend}价值</th><th>分成</th><th class="left">截图</th><th class="left">备注</th></tr></thead>
     <tbody>${snaps.length ? snaps.slice().reverse().map((r) => `
       <tr class="${r.shot ? 'clickable' : ''}" data-snap="${r.index}">
@@ -153,7 +202,7 @@ export function renderDashboard(root, data, res, opts = {}) {
   // 资金流动明细
   const flows = res.flows.filter((r) => !r.error);
   html.push(`<h2>资金流动明细</h2>
-  <div class="table-wrap"><table>
+  <div class="table-wrap"><table id="tbl-flows">
     <thead><tr><th>日期</th><th class="left">谁</th><th class="left">类型</th><th>金额</th><th>当时总值</th><th>当时净值</th><th>买入/赎回份数</th><th class="left">备注</th></tr></thead>
     <tbody>${flows.length ? flows.slice().reverse().map((r) => `
       <tr><td>${esc(r.date)}</td><td class="left">${ownerName(S, r.owner)}</td><td class="left">${typeName(r.type)}</td>
@@ -177,6 +226,8 @@ export function renderDashboard(root, data, res, opts = {}) {
 
   html.push(rulesHtml(S));
   root.innerHTML = html.join('');
+  makeSortable(root.querySelector('#tbl-snaps'), 'view-snaps');
+  makeSortable(root.querySelector('#tbl-flows'), 'view-flows');
 
   // 截图点击
   root.querySelectorAll('tr[data-snap]').forEach((tr) => {
