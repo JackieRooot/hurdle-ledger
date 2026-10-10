@@ -12,9 +12,10 @@
 <main>
   <section id="login" class="login card">
     <h1>共同账户账本</h1>
-    <form id="login-form" autocomplete="off">
+    <form id="login-form">
+      <input type="text" name="username" autocomplete="username" value="hurdle-ledger" class="sr-only" tabindex="-1" aria-hidden="true">
       <label class="field"><span>密码</span>
-        <input id="pw" type="text" class="pw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus>
+        <input id="pw" type="password" class="pw" name="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus>
       </label>
       <button class="primary" type="submit" id="login-btn">解密查看</button>
       <div id="login-msg" class="small"></div>

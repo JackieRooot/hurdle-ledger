@@ -13,8 +13,9 @@ export const signed = (x, f = money) => (ok(x) ? `<span class="${x > 0.00005 ? '
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
-// 密码框用普通文本框（type="text"），这样输入法和输入法里的短语可以正常使用；
-// 旁边的按钮可以切换为圆点遮挡（CSS 遮挡，仍是文本框，输入法照常可用）。
+// 密码框保持 type="password"，浏览器的密码管理器才能保存和自动填充。
+// “显示”按钮把它切换成普通文本框：此时输入法（包括输入法里的短语）可以正常使用。
+// 提交表单时自动切回 password 类型，方便密码管理器识别并保存。
 export function setupPasswordFields(root = document) {
   root.querySelectorAll('input.pw').forEach((input) => {
     if (input.dataset.pwReady) return;
@@ -27,11 +28,16 @@ export function setupPasswordFields(root = document) {
     btn.type = 'button';
     btn.className = 'pw-toggle';
     const sync = () => {
-      const masked = input.classList.contains('masked');
-      btn.textContent = masked ? '显示' : '隐藏';
-      btn.setAttribute('aria-label', masked ? '显示密码' : '隐藏密码');
+      const hidden = input.type === 'password';
+      btn.textContent = hidden ? '显示' : '隐藏';
+      btn.setAttribute('aria-label', hidden ? '显示密码' : '隐藏密码');
     };
-    btn.addEventListener('click', () => { input.classList.toggle('masked'); sync(); input.focus(); });
+    btn.addEventListener('click', () => {
+      input.type = input.type === 'password' ? 'text' : 'password';
+      sync();
+      input.focus();
+    });
+    if (input.form) input.form.addEventListener('submit', () => { input.type = 'password'; sync(); }, true);
     wrap.appendChild(btn);
     sync();
   });

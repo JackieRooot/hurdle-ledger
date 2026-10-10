@@ -29,7 +29,8 @@
 
   <!-- ───── 开始：新建或加载 ───── -->
   <section id="start" class="start-grid">
-    <form id="new-form" class="card" autocomplete="off">
+    <form id="new-form" class="card">
+      <input type="text" name="username" autocomplete="username" value="hurdle-ledger" class="sr-only" tabindex="-1" aria-hidden="true">
       <h3>新建数据集</h3>
       <div class="form-grid">
         <label class="field"><span>管理人名称</span><input id="n-me" value="我" required></label>
@@ -37,17 +38,18 @@
         <label class="field"><span>首笔资金日期</span><input id="n-date" type="date" required></label>
         <label class="field"><span>管理人首笔投入 A（元）</span><input id="n-a" type="number" step="0.01" min="0.01" inputmode="decimal" required></label>
         <label class="field"><span>出资人首笔投入 B（元）</span><input id="n-b" type="number" step="0.01" min="0.01" inputmode="decimal" required></label>
-        <label class="field"><span>设置密码</span><input id="n-pw" type="text" class="pw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required minlength="8"></label>
-        <label class="field"><span>再次输入密码</span><input id="n-pw2" type="text" class="pw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required minlength="8"></label>
+        <label class="field"><span>设置密码</span><input id="n-pw" type="password" class="pw" name="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" required minlength="8"></label>
+        <label class="field"><span>再次输入密码</span><input id="n-pw2" type="password" class="pw" name="password-confirm" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" required minlength="8"></label>
       </div>
       <p class="small muted">门槛 6%，分成 25%。密码至少 8 位，请使用足够长、不易猜到的密码（仓库是公开的，任何人都能下载密文尝试破解）。忘记密码将无法恢复数据。</p>
       <button class="primary" type="submit">创建</button>
       <div class="msg" id="new-msg"></div>
     </form>
 
-    <form id="load-form" class="card" autocomplete="off">
+    <form id="load-form" class="card">
+      <input type="text" name="username" autocomplete="username" value="hurdle-ledger" class="sr-only" tabindex="-1" aria-hidden="true">
       <h3>加载现有数据</h3>
-      <label class="field"><span>密码</span><input id="l-pw" type="text" class="pw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
+      <label class="field"><span>密码</span><input id="l-pw" type="password" class="pw" name="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
       <div class="row form-actions">
         <button class="primary" type="submit">从本站加载 data.enc</button>
         <label class="btn">选择本地文件…<input id="l-file" type="file" accept=".enc" class="hidden"></label>
@@ -70,13 +72,14 @@
 
     <details class="card" id="pub-card" style="margin-top:12px">
       <summary><b>自动发布到 GitHub</b> <span id="pub-state" class="small"></span></summary>
-      <form id="pub-form" autocomplete="off" style="margin-top:10px">
+      <form id="pub-form" style="margin-top:10px">
+        <input type="text" name="username" autocomplete="username" value="github-token" class="sr-only" tabindex="-1" aria-hidden="true">
         <p class="small muted">连接后，每次修改都会自动加密并直接提交到仓库，约 1～2 分钟后查看页自动更新，不用再下载、上传文件。需要一个只授权本仓库的 GitHub token（创建方法见 README）。token 只保存在本页面的内存中，关闭或锁定页面后即清除，下次编辑时重新粘贴。</p>
         <div class="form-grid">
           <label class="field"><span>GitHub 用户名</span><input id="gh-owner" required></label>
           <label class="field"><span>仓库名</span><input id="gh-repo" required></label>
           <label class="field"><span>分支</span><input id="gh-branch" value="main" required></label>
-          <label class="field"><span>Token</span><input id="gh-token" type="text" class="pw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="github_pat_…"></label>
+          <label class="field"><span>Token</span><input id="gh-token" type="password" class="pw" name="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="github_pat_…"></label>
         </div>
         <label class="check"><input type="checkbox" id="gh-auto" checked>修改后自动发布</label>
         <div class="row form-actions">
@@ -163,11 +166,12 @@
 <!-- 修改密码 -->
 <dialog id="pw-dlg">
   <h3>修改密码</h3>
-  <form id="pw-form" autocomplete="off">
+  <form id="pw-form">
+    <input type="text" name="username" autocomplete="username" value="hurdle-ledger" class="sr-only" tabindex="-1" aria-hidden="true">
     <div class="form-grid">
-      <label class="field"><span>当前密码</span><input id="pw-old" type="text" class="pw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
-      <label class="field"><span>新密码（至少 8 位）</span><input id="pw-new" type="text" class="pw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" minlength="8" required></label>
-      <label class="field"><span>再次输入新密码</span><input id="pw-new2" type="text" class="pw" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" minlength="8" required></label>
+      <label class="field"><span>当前密码</span><input id="pw-old" type="password" class="pw" name="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
+      <label class="field"><span>新密码（至少 8 位）</span><input id="pw-new" type="password" class="pw" name="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" minlength="8" required></label>
+      <label class="field"><span>再次输入新密码</span><input id="pw-new2" type="password" class="pw" name="password-confirm" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" minlength="8" required></label>
     </div>
     <p class="small muted">所有截图都需要用新密码重新加密。下一步会从本站下载每张截图，用旧密码解密，再用新密码加密，最后和 data.enc 一起导出。</p>
     <div class="row form-actions">
@@ -779,6 +783,7 @@ $('pub-form').addEventListener('submit', async (e) => {
   $('gh-token').placeholder = '已连接（如需更换，在此输入新 token）';
   setMsg(msg, `已连接 ${esc(repo.owner)}/${esc(repo.repo)}（${esc(repo.branch)} 分支）。`, 'muted');
   updateStatus();
+  $('pub-card').open = false; // 收起表单：浏览器据此判断提交成功，并提示保存 token
   if (dirty) schedulePublish();
 });
 $('gh-auto').addEventListener('change', () => {
