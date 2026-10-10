@@ -100,7 +100,9 @@ export function renderDashboard(root, data, res, opts = {}) {
         <dt>年初至今收益（扣分成前）</dt><dd>${signed(fYtd)}</dd>
         <dt>期初价值</dt><dd>${money(f.start)}</dd>
         <dt>当前高水位</dt><dd>${money(f.H)}</dd>
-        <dt>当前门槛线</dt><dd>${money(f.T)}</dd>
+        <dt>年末门槛线（不提成线）</dt><dd>${money(f.TYearEnd)}</dd>
+        <dt>超出年末门槛线</dt><dd>${signed(ok(f.TYearEnd) ? (f.feeKind === 'settled' ? f.value + f.fee : f.value) - f.TYearEnd : null)}</dd>
+        <dt>当前门槛线（按已过天数折算）</dt><dd>${money(f.T)}</dd>
         <dt>${feeLabel}分成</dt><dd>${money(f.fee)}</dd>
         <dt>到手收益</dt><dd>${signed(f.net)}</dd>
         <dt>到手收益率</dt><dd>${signed(f.netRate, pct)}</dd>
@@ -167,7 +169,7 @@ export function renderDashboard(root, data, res, opts = {}) {
       <td>${money(y.Vf)}</td><td>${money(y.T)}</td><td>${money(y.fee)}</td>
       <td>${units(y.transferUnits)}</td><td>${money(y.Hend)}</td></tr>`).join('') : '<tr><td colspan="10" class="left muted">暂无</td></tr>'}</tbody>
   </table></div>
-  <p class="small muted">“年末价值”为扣除分成前的价值；进行中的年份显示截至最新记录的预估值。</p>`);
+  <p class="small muted">“年末价值”为扣除分成前的价值。进行中的年份：年末价值、当年分成为截至最新记录的预估值；门槛线为按目前资金计算的年末门槛线。</p>`);
 
   html.push(rulesHtml(S));
   root.innerHTML = html.join('');
@@ -246,7 +248,7 @@ export function rulesHtml(S) {
     <li><b>份额法。</b>账户被分成很多“份”，每份的价格叫“净值”。开户时净值为 1：${me}投入多少元就有多少份，${fr}也一样。之后 净值 = 账户总值 ÷ 总份数。每个人的钱 = 自己的份数 × 净值，所以两人按份数共同分享涨跌。</li>
     <li><b>注资和提取。</b>每次有人存钱或取钱，先记下这笔钱进出前一刻的账户总值，算出当时的净值，再用 金额 ÷ 净值 算出买入或卖出的份数。这样别人的份数和价值都不受影响。</li>
     <li><b>只有${fr}的部分涉及分成，</b>${me}自己的钱不涉及门槛和分成。按自然年结算，以 12 月 31 日的记录为准。</li>
-    <li><b>门槛收益 ${h}。</b>每年先保证${fr}拿到 ${h} 的收益。门槛线 = 期初高水位 ×（1 + ${h}）+ 每笔年内注资 ×（1 + ${h} × 在账天数 / 365）− 每笔年内提取 ×（1 + ${h} × 剩余天数 / 365）。开户那年的首笔投入按全年 ${h} 计算。</li>
+    <li><b>门槛收益 ${h}。</b>每年先保证${fr}拿到 ${h} 的收益。门槛线 = 期初高水位 ×（1 + ${h}）+ 每笔年内注资 ×（1 + ${h} × 在账天数 / 365）− 每笔年内提取 ×（1 + ${h} × 剩余天数 / 365）。开户那年的首笔投入按全年 ${h} 计算。页面上的“年末门槛线”就是不提成线：年末价值不超过它就没有分成，年内再有资金进出时它会相应变化；“当前门槛线”是按今天已过天数折算的版本，用来估算当前分成。</li>
     <li><b>分成 ${s}。</b>年末${fr}的价值超过门槛线的部分，${me}收取 ${s}：分成 = max(0, 年末价值 − 门槛线) × ${s}。超不过门槛线就没有分成。</li>
     <li><b>高水位线。</b>以前年份亏的钱要先补回来，补回之后的收益才算门槛和分成。高水位起点是${fr}的首笔投入；年内注资就加上、提取就减去；年末取“调整后的高水位”和“扣除分成后的年末价值”中较大的那个，作为下一年的起点。如果${fr}的份数全部取完归零，高水位清零，再投入时重新开始。</li>
     <li><b>分成不取出。</b>年末把分成对应的份数（分成 ÷ 年末净值）从${fr}名下转到${me}名下，钱留在账户里继续投资，净值和账户总值都不变。</li>

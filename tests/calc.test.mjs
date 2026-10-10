@@ -229,3 +229,18 @@ test('朋友到手收益率按资金在账天数加权', () => {
   close(r.current.friend.net, net);
   close(r.current.friend.netRate, net / base);
 });
+
+test('年末门槛线（不提成线）在年中就显示全年数值', () => {
+  // 例 5 的数据：9 月 30 日时年末门槛线应为 106
+  const r = compute(data(50, 100, [], [snap('2026-09-30', 157.5)], '2026-07-01'), { asOf: '2026-10-10' });
+  close(r.current.friend.TYearEnd, 106);
+  close(r.current.friend.T, 100 * (1 + 0.06 * 273 / 365));
+  assert.equal(year(r, 2026).status, 'open');
+  close(year(r, 2026).T, 106);
+  // 年中注资后：按到年末的天数计算
+  const r2 = compute(data(50, 100, [flow('2026-07-02', 'friend', 'deposit', 20, 150)], [snap('2026-09-30', 175)]), { asOf: '2026-10-10' });
+  close(r2.current.friend.TYearEnd, 126.5984);
+  // 已结算时等于结算用的门槛线
+  const r3 = compute(data(50, 100, [], [snap('2026-12-31', 165)]), { asOf: '2026-12-31' });
+  close(r3.current.friend.TYearEnd, 106);
+});

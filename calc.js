@@ -226,7 +226,7 @@ export function compute(data, opts = {}) {
     const blocked = ys.blockedBy != null;
     const Vf = fu * navNow, Vm = mu * navNow;
     const out = {
-      friend: { units: fu, value: Vf, start: ys.v0.friend, H: null, T: null, fee: null, feeKind: null, net: null, netRate: null },
+      friend: { units: fu, value: Vf, start: ys.v0.friend, H: null, T: null, TYearEnd: null, fee: null, feeKind: null, net: null, netRate: null },
       me: { units: mu, value: Vm, start: ys.v0.me, invGain: null, invRate: null, fee: null, feeKind: null },
     };
     if (blocked) return out;
@@ -241,6 +241,8 @@ export function compute(data, opts = {}) {
       out.friend.feeKind = out.me.feeKind = 'estimate';
     }
     out.friend.T = T; out.friend.fee = fee; out.me.fee = fee;
+    // 年末门槛线（不提成线）：按目前已发生的资金流动，把计算日设为当年 12 月 31 日
+    out.friend.TYearEnd = settledFee != null ? T : hurdleLine(ys, `${ys.year}-12-31`, h);
     const fNet = sum(ys.flows.friend), mNet = sum(ys.flows.me);
     out.friend.net = VfNet - ys.v0.friend - fNet;
     const fb = weightedBase(ys.v0.friend, ys.flows.friend, ys.startDate, date);
@@ -395,7 +397,7 @@ export function compute(data, opts = {}) {
     if (ys.blockedBy != null) { row.status = 'blocked'; row.blockedBy = ys.blockedBy; }
     else if (ys.year === curYear) {
       row.status = 'open';
-      row.Vf = cur.friend.value; row.T = cur.friend.T; row.fee = cur.friend.fee;
+      row.Vf = cur.friend.value; row.T = cur.friend.TYearEnd; row.Tnow = cur.friend.T; row.fee = cur.friend.fee;
       row.Hadj = ys.Hadj; row.asOf = lastDate;
     }
     // 没有任何数据的新年份（例如结算后进入的下一年）不显示
