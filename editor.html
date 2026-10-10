@@ -883,7 +883,12 @@ function updateStatus() {
   else html = '<span class="muted">没有未保存的修改</span>';
   $('status').innerHTML = html;
   $('pub-state').innerHTML = gh ? `<span class="pos">已连接 ${esc(gh.owner)}/${esc(gh.repo)}${autoPublish ? '（自动发布）' : '（手动发布）'}</span>` : '<span class="muted">未连接</span>';
-  $('btn-publish').disabled = !gh || publishing || !dirty;
+  // 发布按钮按状态显示：未连接 → “连接 GitHub”；有修改 → “立即发布”；正在发布 → 不可点；没有修改 → 隐藏
+  const btn = $('btn-publish');
+  btn.classList.toggle('hidden', !!gh && !dirty && !publishing && !publishError);
+  btn.disabled = publishing;
+  btn.textContent = !gh ? '连接 GitHub' : publishing ? '正在发布…' : publishError ? '重试发布' : '立即发布';
+  btn.title = !gh ? '连接后修改会自动提交到仓库' : autoPublish ? '不等待，马上发布当前修改' : '把当前修改提交到仓库';
 }
 </script>
 </body>
