@@ -17,6 +17,9 @@
   td.actions button { min-height: 32px; padding: 4px 10px; }
   .start-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
   .preview-head { display: flex; justify-content: space-between; align-items: baseline; }
+  input[type=checkbox] { width: auto; min-height: 0; margin: 0 6px 0 0; vertical-align: middle; }
+  label.check { display: block; margin: 8px 0; font-size: 14px; }
+  details.card > summary { cursor: pointer; }
   pre.files { background: var(--surface-2); padding: 10px; border-radius: 8px; white-space: pre-wrap; font-size: 13px; }
 </style>
 </head>
@@ -58,11 +61,32 @@
     <div class="toolbar row" style="justify-content:space-between">
       <span class="status" id="status"></span>
       <span class="row">
-        <button class="primary" type="button" id="btn-export">导出</button>
+        <button class="primary" type="button" id="btn-publish">立即发布</button>
+        <button type="button" id="btn-export">手动导出</button>
         <button type="button" id="btn-pw">修改密码</button>
         <button type="button" id="btn-lock">锁定</button>
       </span>
     </div>
+
+    <details class="card" id="pub-card" style="margin-top:12px">
+      <summary><b>自动发布到 GitHub</b> <span id="pub-state" class="small"></span></summary>
+      <form id="pub-form" autocomplete="off" style="margin-top:10px">
+        <p class="small muted">连接后，每次修改都会自动加密并直接提交到仓库，约 1～2 分钟后查看页自动更新，不用再下载、上传文件。需要一个只授权本仓库的 GitHub token（创建方法见 README）。token 只保存在本页面的内存中，关闭或锁定页面后即清除，下次编辑时重新粘贴。</p>
+        <div class="form-grid">
+          <label class="field"><span>GitHub 用户名</span><input id="gh-owner" required></label>
+          <label class="field"><span>仓库名</span><input id="gh-repo" required></label>
+          <label class="field"><span>分支</span><input id="gh-branch" value="main" required></label>
+          <label class="field"><span>Token</span><input id="gh-token" type="password" autocomplete="off" placeholder="github_pat_…"></label>
+        </div>
+        <label class="check"><input type="checkbox" id="gh-auto" checked>修改后自动发布</label>
+        <div class="row form-actions">
+          <button type="submit" class="primary">连接</button>
+          <button type="button" id="gh-forget">断开</button>
+          <button type="button" id="gh-reload">从仓库重新加载最新数据</button>
+        </div>
+        <div class="msg" id="pub-msg"></div>
+      </form>
+    </details>
 
     <h2>基本设置</h2>
     <form id="set-form" class="card" autocomplete="off">
@@ -172,6 +196,7 @@ import { compute, emptyData, quarterOf, isValidDate, dayNum, isYearEnd, todayStr
 import { encryptJSON, decryptJSON, encryptBytes, decryptBytes, imageMime, WrongPasswordError } from './crypto.js';
 import { renderDashboard, money, units, navf, esc, describeWhere } from './view.js';
 import { makeZip } from './zip.js';
+import { GitHubRepo, detectRepo, gitBlobSha } from './github.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -183,12 +208,18 @@ let pendingShots = new Map();  // 文件名 → 加密后的字节（待导出�
 const localUrls = new Map();   // 文件名 → 本地预览 URL
 let removedShots = new Set();  // 已删除、需要从仓库中删除的截图
 let editSnap = null, editFlow = null;
+// 发布状态（全部只在内存中）
+let gh = null;                // GitHubRepo，含 token
+let autoPublish = true;
+let baseDataSha = null;       // 加载时 data.enc 的 git blob sha；null 表示仓库里应当还没有 data.enc
+let editVersion = 0;
+let publishing = false, publishTimer = null, lastPublished = null, publishError = null;
 
 for (const dlg of document.querySelectorAll('dialog')) {
   dlg.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => dlg.close()));
 }
 window.addEventListener('beforeunload', (e) => {
-  if (dirty) { e.preventDefault(); e.returnValue = ''; }
+  if (dirty || publishing) { e.preventDefault(); e.returnValue = ''; }
 });
 
 function setMsg(el, text, kind = 'neg') { el.className = 'msg ' + kind; el.innerHTML = text; }
@@ -207,19 +238,21 @@ $('new-form').addEventListener('submit', (e) => {
   password = $('n-pw').value;
   data = emptyData({ date, me: A, friend: B, names: { me: $('n-me').value.trim() || '我', friend: $('n-friend').value.trim() || '朋友' } });
   dirty = true;
+  baseDataSha = null;
   $('n-pw').value = $('n-pw2').value = '';
   enterEditor();
 });
 
 // ───── 加载 ─────
-async function loadFrom(bufPromise) {
+async function loadFrom(getBytes) {
   const msg = $('load-msg');
   const pw = $('l-pw').value;
   if (!pw) return setMsg(msg, '请先输入密码。');
-  setMsg(msg, '正在解密……', 'muted');
+  setMsg(msg, '正在下载并解密……', 'muted');
   try {
-    const buf = await bufPromise;
+    const buf = new Uint8Array(await getBytes());
     const d = await decryptJSON(pw, buf);
+    baseDataSha = await gitBlobSha(buf);
     if (!d || !d.inception) throw new Error('文件内容不是有效的账本数据。');
     d.flows = d.flows || []; d.snapshots = d.snapshots || [];
     password = pw; data = d; dirty = false;
@@ -232,15 +265,16 @@ async function loadFrom(bufPromise) {
 }
 $('load-form').addEventListener('submit', (e) => {
   e.preventDefault();
-  loadFrom(fetch('data.enc', { cache: 'no-store' }).then((r) => {
+  loadFrom(async () => {
+    const r = await fetch('data.enc', { cache: 'no-store' });
     if (r.status === 404) throw new Error('本站还没有 data.enc，请先新建数据集。');
     if (!r.ok) throw new Error(`下载失败（HTTP ${r.status}）`);
     return r.arrayBuffer();
-  }));
+  });
 });
 $('l-file').addEventListener('change', (e) => {
   const f = e.target.files[0];
-  if (f) loadFrom(f.arrayBuffer());
+  if (f) loadFrom(() => f.arrayBuffer());
   e.target.value = '';
 });
 
@@ -249,21 +283,19 @@ function enterEditor() {
   $('start').classList.add('hidden');
   $('edit').classList.remove('hidden');
   fillSettings();
+  fillPublish();
   resetSnapForm();
   resetFlowForm();
   render();
 }
 
-function markDirty() { dirty = true; }
+function markDirty() { dirty = true; editVersion++; schedulePublish(); }
 
 function render() {
   const S = compute(data).settings;
   $('fl-owner').options[0].textContent = S.names.friend + '（出资人）';
   $('fl-owner').options[1].textContent = S.names.me + '（管理人）';
-  const n = pendingShots.size;
-  $('status').innerHTML = dirty
-    ? `<span class="neg">有未导出的修改${n ? `（含 ${n} 张新截图）` : ''}</span>`
-    : '<span class="muted">所有修改都已导出</span>';
+  updateStatus();
   const res = compute(data);
   renderLists(res);
   renderDashboard($('preview'), data, res, { onShot });
@@ -536,9 +568,8 @@ async function onShot(s) {
     if (!url) {
       let buf = pendingShots.get(s.shot);
       if (!buf) {
-        const r = await fetch('shots/' + encodeURIComponent(s.shot), { cache: 'no-store' });
-        if (!r.ok) throw new Error(`本站没有 shots/${s.shot}（HTTP ${r.status}），可能还没上传。`);
-        buf = await r.arrayBuffer();
+        buf = await fetchShot(s.shot);
+        if (!buf) throw new Error(`仓库中没有 shots/${s.shot}，可能还没上传。`);
       }
       const bytes = await decryptBytes(password, buf);
       url = URL.createObjectURL(new Blob([bytes], { type: imageMime(bytes) }));
@@ -593,7 +624,7 @@ $('btn-export').addEventListener('click', async () => {
   if (errs.length && !confirm(`数据中还有 ${errs.length} 处错误（这些记录不会被计入），仍然导出吗？`)) return;
   btn.disabled = true; btn.textContent = '正在加密……';
   try {
-    const dataEnc = await encryptJSON(password, data);
+    const dataEnc = await encryptJSON(password, { ...data, updatedAt: new Date().toISOString() });
     const shots = [...pendingShots.entries()];
     const stamp = todayStr().replaceAll('-', '');
     let body = '';
@@ -616,6 +647,7 @@ ${shots.map(([n]) => `shots/${esc(n)}`.padEnd(20) + '→ 仓库的 shots/ 目录
     pendingShots = new Map();
     removedShots = new Set();
     dirty = false;
+    baseDataSha = await gitBlobSha(dataEnc); // 你上传后仓库里就是这个版本
     render();
   } catch (err) {
     alert('导出失败：' + (err.message || err));
@@ -652,11 +684,8 @@ $('pw-form').addEventListener('submit', async (e) => {
     setMsg(prog, `正在重新加密截图 ${i}/${names.length}：${esc(name)}……`, 'muted');
     try {
       let buf = pendingShots.get(name);
-      if (!buf) {
-        const r = await fetch('shots/' + encodeURIComponent(name), { cache: 'no-store' });
-        if (!r.ok) throw new Error('missing');
-        buf = await r.arrayBuffer();
-      }
+      if (!buf) buf = await fetchShot(name);
+      if (!buf) throw new Error('missing');
       const plain = await decryptBytes(pwJob.oldPw, buf);
       pwJob.done.set(name, await encryptBytes(pwJob.newPw, plain));
     } catch {
@@ -699,16 +728,18 @@ $('pw-finish').addEventListener('click', () => {
   for (const [n, b] of pwJob.done) pendingShots.set(n, b);
   for (const n of pwJob.missing) pendingShots.delete(n);
   pwJob = null;
-  dirty = true;
   $('pw-dlg').close();
+  markDirty();
   render();
-  alert('新密码已生效。请点击“导出”，并把 data.enc 和全部截图上传到仓库，覆盖原文件。在上传之前，查看页仍然使用旧密码。');
+  alert(gh ? '新密码已生效，正在把 data.enc 和全部截图重新发布到仓库。请把新密码告诉朋友。'
+    : '新密码已生效。请点击“手动导出”，并把 data.enc 和全部截图上传到仓库，覆盖原文件。在上传之前，查看页仍然使用旧密码。');
 });
 
 // ───── 锁定 ─────
 $('btn-lock').addEventListener('click', () => {
-  if (dirty && !confirm('有未导出的修改，锁定后会丢失。确定吗？')) return;
-  password = null; data = null; dirty = false;
+  if ((dirty || publishing) && !confirm('有尚未发布/导出的修改，锁定后会丢失。确定吗？')) return;
+  password = null; data = null; dirty = false; gh = null;
+  clearTimeout(publishTimer); publishError = null; lastPublished = null;
   pendingShots = new Map(); removedShots = new Set();
   for (const u of localUrls.values()) URL.revokeObjectURL(u);
   localUrls.clear();
@@ -716,6 +747,135 @@ $('btn-lock').addEventListener('click', () => {
   $('edit').classList.add('hidden');
   $('start').classList.remove('hidden');
 });
+
+// ───── 自动发布到 GitHub ─────
+function fillPublish() {
+  const d = detectRepo();
+  if (!$('gh-owner').value) $('gh-owner').value = d.owner || '';
+  if (!$('gh-repo').value) $('gh-repo').value = d.repo || '';
+  $('gh-token').value = '';
+  $('gh-auto').checked = autoPublish;
+  $('pub-card').open = !gh;
+  updateStatus();
+}
+
+$('pub-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = $('pub-msg');
+  const token = $('gh-token').value.trim() || (gh && gh.token);
+  if (!token) return setMsg(msg, '请填写 token。');
+  const repo = new GitHubRepo({ owner: $('gh-owner').value.trim(), repo: $('gh-repo').value.trim(), branch: $('gh-branch').value.trim() || 'main', token });
+  setMsg(msg, '正在检查……', 'muted');
+  try {
+    await repo.check();
+    await repo.headCommit();
+  } catch (err) {
+    return setMsg(msg, esc(err.message));
+  }
+  gh = repo;
+  $('gh-token').value = '';
+  $('gh-token').placeholder = '已连接（如需更换，在此输入新 token）';
+  setMsg(msg, `已连接 ${esc(repo.owner)}/${esc(repo.repo)}（${esc(repo.branch)} 分支）。`, 'muted');
+  updateStatus();
+  if (dirty) schedulePublish();
+});
+$('gh-auto').addEventListener('change', () => {
+  autoPublish = $('gh-auto').checked; updateStatus();
+  if (autoPublish && dirty) schedulePublish();
+});
+$('gh-forget').addEventListener('click', () => {
+  gh = null;
+  clearTimeout(publishTimer);
+  $('gh-token').placeholder = 'github_pat_…';
+  setMsg($('pub-msg'), '已断开。', 'muted');
+  updateStatus();
+});
+
+// 从仓库读取最新的 data.enc（例如在另一台设备上发布过，或者发布时提示冲突）
+$('gh-reload').addEventListener('click', async () => {
+  const msg = $('pub-msg');
+  if (!gh) return setMsg(msg, '请先连接。');
+  if (dirty && !confirm('当前有未发布的修改，重新加载会丢弃这些修改。确定吗？')) return;
+  setMsg(msg, '正在读取……', 'muted');
+  try {
+    const b = await gh.readFile('data.enc');
+    if (!b) return setMsg(msg, '仓库里还没有 data.enc。');
+    const d = await decryptJSON(password, b);
+    d.flows = d.flows || []; d.snapshots = d.snapshots || [];
+    data = d; dirty = false; publishError = null;
+    pendingShots = new Map(); removedShots = new Set();
+    baseDataSha = await gitBlobSha(b);
+    fillSettings(); resetSnapForm(); resetFlowForm(); render();
+    setMsg(msg, '已加载仓库中的最新数据。', 'muted');
+  } catch (err) {
+    setMsg(msg, esc(err instanceof WrongPasswordError ? '仓库中的数据无法用当前密码解密。' : err.message));
+  }
+});
+
+// 截图：已连接时优先从仓库读取（最新），否则从本站读取
+async function fetchShot(name) {
+  if (gh) {
+    try { const b = await gh.readFile('shots/' + name); if (b) return b; } catch { /* 退回本站 */ }
+  }
+  const r = await fetch('shots/' + encodeURIComponent(name), { cache: 'no-store' });
+  return r.ok ? r.arrayBuffer() : null;
+}
+
+function schedulePublish() {
+  if (!gh || !autoPublish || !data) return;
+  clearTimeout(publishTimer);
+  publishTimer = setTimeout(publish, 2000);
+  updateStatus();
+}
+
+async function publish() {
+  clearTimeout(publishTimer);
+  if (!data) return;
+  if (!gh) { $('pub-card').open = true; $('pub-card').scrollIntoView({ behavior: 'smooth' }); return; }
+  if (publishing) { publishTimer = setTimeout(publish, 1000); return; }
+  if (compute(data).errors.length) { publishError = '数据中有错误，已暂停发布。请先修正。'; updateStatus(); return; }
+  publishing = true; publishError = null; updateStatus();
+  const version = editVersion;
+  const shots = new Map(pendingShots);
+  const removed = new Set(removedShots);
+  try {
+    const dataEnc = await encryptJSON(password, { ...data, updatedAt: new Date().toISOString() });
+    await gh.commit({
+      files: [{ path: 'data.enc', bytes: dataEnc }, ...[...shots].map(([n, b]) => ({ path: 'shots/' + n, bytes: b }))],
+      deletes: [...removed].map((n) => 'shots/' + n),
+      message: 'Update encrypted ledger data',
+      expect: { path: 'data.enc', sha: baseDataSha },
+    });
+    baseDataSha = await gitBlobSha(dataEnc);
+    for (const [n, b] of shots) if (pendingShots.get(n) === b) pendingShots.delete(n);
+    for (const n of removed) removedShots.delete(n);
+    if (editVersion === version) dirty = false;
+    lastPublished = new Date();
+  } catch (err) {
+    publishError = '发布失败：' + (err.message || String(err));
+  } finally {
+    publishing = false;
+    render();
+    if (dirty && !publishError) schedulePublish();
+  }
+}
+$('btn-publish').addEventListener('click', publish);
+
+function updateStatus() {
+  const n = pendingShots.size;
+  const shotsNote = n ? `（含 ${n} 张新截图）` : '';
+  let html;
+  if (publishing) html = '<span class="muted">正在加密并发布……</span>';
+  else if (publishError) html = `<span class="neg">${esc(publishError)}</span>`;
+  else if (dirty && gh && autoPublish) html = `<span class="muted">有修改${shotsNote}，即将自动发布……</span>`;
+  else if (dirty && gh) html = `<span class="neg">有未发布的修改${shotsNote}</span>`;
+  else if (dirty) html = `<span class="neg">有未导出的修改${shotsNote}（连接 GitHub 后可自动发布）</span>`;
+  else if (lastPublished) html = `<span class="pos">已发布 ${lastPublished.toLocaleTimeString('zh-CN')}，约 1～2 分钟后查看页自动更新</span>`;
+  else html = '<span class="muted">没有未保存的修改</span>';
+  $('status').innerHTML = html;
+  $('pub-state').innerHTML = gh ? `<span class="pos">已连接 ${esc(gh.owner)}/${esc(gh.repo)}${autoPublish ? '（自动发布）' : '（手动发布）'}</span>` : '<span class="muted">未连接</span>';
+  $('btn-publish').disabled = !gh || publishing || !dirty;
+}
 </script>
 </body>
 </html>

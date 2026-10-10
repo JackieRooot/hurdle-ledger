@@ -25,8 +25,9 @@
   <section id="app" class="hidden">
     <div class="row" style="justify-content:space-between">
       <h1 id="title" style="margin-bottom:0">共同账户账本</h1>
-      <button type="button" id="lock">锁定</button>
+      <span class="row"><button type="button" id="refresh">刷新</button><button type="button" id="lock">锁定</button></span>
     </div>
+    <p class="small muted" id="updated"></p>
     <div id="dash"></div>
   </section>
 </main>
@@ -48,6 +49,8 @@ const $ = (id) => document.getElementById(id);
 // 解密后的数据只保存在内存中（这两个变量），不写入任何存储
 let password = null;
 let data = null;
+let dataHash = null;      // 当前 data.enc 的哈希，用于判断是否有新数据
+let pollTimer = null;
 const shotCache = new Map();
 
 $('login-form').addEventListener('submit', async (e) => {
@@ -63,7 +66,7 @@ $('login-form').addEventListener('submit', async (e) => {
     if (!resp.ok) throw new Error(`下载数据失败（HTTP ${resp.status}）。`);
     const buf = await resp.arrayBuffer();
     const d = await decryptJSON(pw, buf);
-    password = pw; data = d;
+    password = pw; data = d; dataHash = await hashOf(buf);
     $('pw').value = '';
     msg.textContent = '';
     show();
@@ -75,15 +78,51 @@ $('login-form').addEventListener('submit', async (e) => {
   }
 });
 
-function show() {
+function show(note = '') {
   $('login').classList.add('hidden');
   $('app').classList.remove('hidden');
   const res = compute(data);
   renderDashboard($('dash'), data, res, { onShot });
+  const t = data.updatedAt ? new Date(data.updatedAt) : null;
+  $('updated').textContent = (t && !isNaN(t) ? `数据最后更新：${t.toLocaleString('zh-CN')}` : '') + (note ? `　${note}` : '');
+  clearInterval(pollTimer);
+  pollTimer = setInterval(checkUpdate, 3 * 60 * 1000);
 }
 
+async function hashOf(buf) {
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', buf));
+  return [...h].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// 页面打开期间自动检查新数据：每 3 分钟一次，以及切回这个页面时
+async function checkUpdate(manual = false) {
+  if (!password) return;
+  try {
+    const resp = await fetch('data.enc', { cache: 'no-store' });
+    if (!resp.ok) return;
+    const buf = await resp.arrayBuffer();
+    const h = await hashOf(buf);
+    if (h === dataHash) { if (manual) show('已是最新数据'); return; }
+    const d = await decryptJSON(password, buf);
+    data = d; dataHash = h;
+    for (const u of shotCache.values()) URL.revokeObjectURL(u);
+    shotCache.clear();
+    show('已自动更新为最新数据');
+  } catch (err) {
+    if (err instanceof WrongPasswordError) {
+      // 管理人修改了密码：回到登录界面
+      $('lock').click();
+      $('login-msg').className = 'small neg';
+      $('login-msg').textContent = '数据已更新且密码已更改，请输入新密码。';
+    }
+  }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
+$('refresh').addEventListener('click', () => checkUpdate(true));
+
 $('lock').addEventListener('click', () => {
-  password = null; data = null;
+  password = null; data = null; dataHash = null;
+  clearInterval(pollTimer);
   for (const u of shotCache.values()) URL.revokeObjectURL(u);
   shotCache.clear();
   $('dash').innerHTML = '';
