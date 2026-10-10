@@ -262,6 +262,7 @@ async function loadFrom(getBytes, fromFile = false) {
     baseDataSha = fromFile ? [await gitBlobSha(buf), null] : await gitBlobSha(buf);
     if (!d || !d.inception) throw new Error('文件内容不是有效的账本数据。');
     d.flows = d.flows || []; d.snapshots = d.snapshots || [];
+    sortData(d);
     password = pw; data = d; dirty = false;
     $('l-pw').value = '';
     setMsg(msg, '', 'muted');
@@ -811,6 +812,7 @@ $('gh-reload').addEventListener('click', async () => {
     if (!b) return setMsg(msg, '仓库里还没有 data.enc。');
     const d = await decryptJSON(password, b);
     d.flows = d.flows || []; d.snapshots = d.snapshots || [];
+    sortData(d);
     data = d; dirty = false; publishError = null;
     pendingShots = new Map(); removedShots = new Set();
     baseDataSha = await gitBlobSha(b);
