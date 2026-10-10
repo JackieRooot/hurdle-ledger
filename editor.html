@@ -6,7 +6,26 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <title>账本编辑</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20261010-1">
+<!-- 版本号：每次修改 js/css 时一起改（index.html 和 editor.html 保持一致），让浏览器不会混用新旧文件 -->
+<script type="importmap">
+{ "imports": {
+  "./calc.js": "./calc.js?v=20261010-1",
+  "./crypto.js": "./crypto.js?v=20261010-1",
+  "./view.js": "./view.js?v=20261010-1",
+  "./github.js": "./github.js?v=20261010-1",
+  "./zip.js": "./zip.js?v=20261010-1"
+} }
+</script>
+<script>
+// 页面脚本没能加载（多半是浏览器缓存了旧版本文件）时给出明确提示，而不是点按钮没有反应
+window.addEventListener('error', function (e) {
+  var t = e.target, msg = String(e.message || '');
+  if (!(t && t.tagName === 'SCRIPT') && !/import|export|module|Unexpected token/i.test(msg)) return;
+  var b = document.getElementById('load-error');
+  if (b) b.hidden = false;
+}, true);
+</script>
 <style>
   .toolbar { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 8px 0; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
   .status { font-size: 13px; }
@@ -24,12 +43,13 @@
 </style>
 </head>
 <body>
+<div id="load-error" class="banner err" hidden style="margin:16px">页面文件没有完整加载（多半是浏览器缓存了旧版本）。请按 <b>Ctrl+F5</b>（Mac：<b>Cmd+Shift+R</b>）强制刷新；手机上请关闭这个页面后重新打开。</div>
 <main>
   <h1>账本编辑</h1>
 
   <!-- ───── 开始：新建或加载 ───── -->
   <section id="start" class="start-grid">
-    <form id="new-form" class="card">
+    <form method="post" onsubmit="return false" id="new-form" class="card">
       <input type="text" name="username" autocomplete="username" value="hurdle-ledger" class="sr-only" tabindex="-1" aria-hidden="true">
       <h3>新建数据集</h3>
       <div class="form-grid">
@@ -46,7 +66,7 @@
       <div class="msg" id="new-msg"></div>
     </form>
 
-    <form id="load-form" class="card">
+    <form method="post" onsubmit="return false" id="load-form" class="card">
       <input type="text" name="username" autocomplete="username" value="hurdle-ledger" class="sr-only" tabindex="-1" aria-hidden="true">
       <h3>加载现有数据</h3>
       <label class="field"><span>密码</span><input id="l-pw" type="password" class="pw" name="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
@@ -72,7 +92,7 @@
 
     <details class="card" id="pub-card" style="margin-top:12px">
       <summary><b>自动发布到 GitHub</b> <span id="pub-state" class="small"></span></summary>
-      <form id="pub-form" autocomplete="off" style="margin-top:10px">
+      <form method="post" onsubmit="return false" id="pub-form" autocomplete="off" style="margin-top:10px">
         <p class="small muted">连接后，每次修改都会自动加密并直接提交到仓库，约 1～2 分钟后查看页自动更新，不用再下载、上传文件。需要一个只授权本仓库的 GitHub token（创建方法见 README）。token 只保存在本页面的内存中，不交给浏览器的密码管理器，也不写入浏览器存储；关闭或锁定页面后即清除，下次编辑时重新粘贴。</p>
         <div class="form-grid">
           <label class="field"><span>GitHub 用户名</span><input id="gh-owner" required></label>
@@ -91,7 +111,7 @@
     </details>
 
     <h2>基本设置</h2>
-    <form id="set-form" class="card" autocomplete="off">
+    <form method="post" onsubmit="return false" id="set-form" class="card" autocomplete="off">
       <div class="form-grid">
         <label class="field"><span>管理人名称</span><input id="s-me" required></label>
         <label class="field"><span>出资人名称</span><input id="s-friend" required></label>
@@ -105,7 +125,7 @@
     </form>
 
     <h2>季度快照</h2>
-    <form id="snap-form" class="card" autocomplete="off">
+    <form method="post" onsubmit="return false" id="snap-form" class="card" autocomplete="off">
       <h3 id="snap-form-title">新增快照</h3>
       <div class="form-grid">
         <label class="field"><span>日期</span><input id="sn-date" type="date" required></label>
@@ -127,7 +147,7 @@
     </table></div>
 
     <h2>资金流动</h2>
-    <form id="flow-form" class="card" autocomplete="off">
+    <form method="post" onsubmit="return false" id="flow-form" class="card" autocomplete="off">
       <h3 id="flow-form-title">新增资金流动</h3>
       <div class="form-grid">
         <label class="field"><span>日期</span><input id="fl-date" type="date" required></label>
@@ -165,7 +185,7 @@
 <!-- 修改密码 -->
 <dialog id="pw-dlg">
   <h3>修改密码</h3>
-  <form id="pw-form">
+  <form method="post" onsubmit="return false" id="pw-form">
     <input type="text" name="username" autocomplete="username" value="hurdle-ledger" class="sr-only" tabindex="-1" aria-hidden="true">
     <div class="form-grid">
       <label class="field"><span>当前密码</span><input id="pw-old" type="password" class="pw" name="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>

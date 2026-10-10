@@ -6,13 +6,33 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <title>共同账户账本</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20261010-1">
+<!-- 版本号：每次修改 js/css 时一起改（index.html 和 editor.html 保持一致），让浏览器不会混用新旧文件 -->
+<script type="importmap">
+{ "imports": {
+  "./calc.js": "./calc.js?v=20261010-1",
+  "./crypto.js": "./crypto.js?v=20261010-1",
+  "./view.js": "./view.js?v=20261010-1",
+  "./github.js": "./github.js?v=20261010-1",
+  "./zip.js": "./zip.js?v=20261010-1"
+} }
+</script>
+<script>
+// 页面脚本没能加载（多半是浏览器缓存了旧版本文件）时给出明确提示，而不是点按钮没有反应
+window.addEventListener('error', function (e) {
+  var t = e.target, msg = String(e.message || '');
+  if (!(t && t.tagName === 'SCRIPT') && !/import|export|module|Unexpected token/i.test(msg)) return;
+  var b = document.getElementById('load-error');
+  if (b) b.hidden = false;
+}, true);
+</script>
 </head>
 <body>
+<div id="load-error" class="banner err" hidden style="margin:16px">页面文件没有完整加载（多半是浏览器缓存了旧版本）。请按 <b>Ctrl+F5</b>（Mac：<b>Cmd+Shift+R</b>）强制刷新；手机上请关闭这个页面后重新打开。</div>
 <main>
   <section id="login" class="login card">
     <h1>共同账户账本</h1>
-    <form id="login-form">
+    <form method="post" onsubmit="return false" id="login-form">
       <input type="text" name="username" autocomplete="username" value="hurdle-ledger" class="sr-only" tabindex="-1" aria-hidden="true">
       <label class="field"><span>密码</span>
         <input id="pw" type="password" class="pw" name="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus>
