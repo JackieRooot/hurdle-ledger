@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>共同账户账本</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <section id="login" class="login card">
+    <h1>共同账户账本</h1>
+    <form id="login-form" autocomplete="off">
+      <label class="field"><span>密码</span>
+        <input id="pw" type="password" autocomplete="current-password" required autofocus>
+      </label>
+      <button class="primary" type="submit" id="login-btn">解密查看</button>
+      <div id="login-msg" class="small"></div>
+    </form>
+    <p class="small muted">数据在你的浏览器中解密，密码不会发送到任何地方。</p>
+  </section>
+
+  <section id="app" class="hidden">
+    <div class="row" style="justify-content:space-between">
+      <h1 id="title" style="margin-bottom:0">共同账户账本</h1>
+      <button type="button" id="lock">锁定</button>
+    </div>
+    <div id="dash"></div>
+  </section>
+</main>
+
+<dialog id="shot-dlg">
+  <div class="row" style="justify-content:space-between">
+    <b id="shot-title"></b>
+    <button type="button" id="shot-close">关闭</button>
+  </div>
+  <div id="shot-body"></div>
+</dialog>
+
+<script type="module">
+import { compute } from './calc.js';
+import { decryptJSON, decryptBytes, imageMime, WrongPasswordError } from './crypto.js';
+import { renderDashboard, esc } from './view.js';
+
+const $ = (id) => document.getElementById(id);
+// 解密后的数据只保存在内存中（这两个变量），不写入任何存储
+let password = null;
+let data = null;
+const shotCache = new Map();
+
+$('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = $('login-msg');
+  const pw = $('pw').value;
+  $('login-btn').disabled = true;
+  msg.className = 'small muted';
+  msg.textContent = '正在下载并解密，可能需要几秒……';
+  try {
+    const resp = await fetch('data.enc', { cache: 'no-store' });
+    if (resp.status === 404) throw new Error('还没有数据（data.enc 不存在）。');
+    if (!resp.ok) throw new Error(`下载数据失败（HTTP ${resp.status}）。`);
+    const buf = await resp.arrayBuffer();
+    const d = await decryptJSON(pw, buf);
+    password = pw; data = d;
+    $('pw').value = '';
+    msg.textContent = '';
+    show();
+  } catch (err) {
+    msg.className = 'small neg';
+    msg.textContent = err instanceof WrongPasswordError ? '密码错误，请重试。' : (err.message || String(err));
+  } finally {
+    $('login-btn').disabled = false;
+  }
+});
+
+function show() {
+  $('login').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  const res = compute(data);
+  renderDashboard($('dash'), data, res, { onShot });
+}
+
+$('lock').addEventListener('click', () => {
+  password = null; data = null;
+  for (const u of shotCache.values()) URL.revokeObjectURL(u);
+  shotCache.clear();
+  $('dash').innerHTML = '';
+  $('app').classList.add('hidden');
+  $('login').classList.remove('hidden');
+});
+
+async function onShot(r) {
+  const dlg = $('shot-dlg');
+  $('shot-title').textContent = `${r.period || ''} ${r.date} 截图`;
+  const body = $('shot-body');
+  body.innerHTML = '<p class="spinner">正在下载并解密截图……</p>';
+  dlg.showModal();
+  try {
+    let url = shotCache.get(r.shot);
+    if (!url) {
+      const resp = await fetch('shots/' + encodeURIComponent(r.shot), { cache: 'no-store' });
+      if (!resp.ok) throw new Error(`截图文件不存在或无法下载（HTTP ${resp.status}）：shots/${r.shot}`);
+      const bytes = await decryptBytes(password, await resp.arrayBuffer());
+      url = URL.createObjectURL(new Blob([bytes], { type: imageMime(bytes) }));
+      shotCache.set(r.shot, url);
+    }
+    body.innerHTML = `<img alt="截图" src="${url}">`;
+  } catch (err) {
+    body.innerHTML = `<p class="neg">${esc(err instanceof WrongPasswordError ? '截图无法用当前密码解密（可能还没有用新密码重新加密上传）。' : err.message)}</p>`;
+  }
+}
+$('shot-close').addEventListener('click', () => $('shot-dlg').close());
+</script>
+</body>
+</html>

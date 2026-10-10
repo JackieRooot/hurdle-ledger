@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>账本编辑</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .toolbar { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 8px 0; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+  .status { font-size: 13px; }
+  .form-actions { margin-top: 10px; }
+  .msg { margin-top: 8px; font-size: 14px; }
+  .live { margin-top: 8px; font-size: 14px; color: var(--text-2); }
+  td.actions { white-space: nowrap; }
+  td.actions button { min-height: 32px; padding: 4px 10px; }
+  .start-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .preview-head { display: flex; justify-content: space-between; align-items: baseline; }
+  pre.files { background: var(--surface-2); padding: 10px; border-radius: 8px; white-space: pre-wrap; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>账本编辑</h1>
+
+  <!-- ───── 开始：新建或加载 ───── -->
+  <section id="start" class="start-grid">
+    <form id="new-form" class="card" autocomplete="off">
+      <h3>新建数据集</h3>
+      <div class="form-grid">
+        <label class="field"><span>管理人名称</span><input id="n-me" value="我" required></label>
+        <label class="field"><span>出资人名称</span><input id="n-friend" value="朋友" required></label>
+        <label class="field"><span>首笔资金日期</span><input id="n-date" type="date" required></label>
+        <label class="field"><span>管理人首笔投入 A（元）</span><input id="n-a" type="number" step="0.01" min="0.01" inputmode="decimal" required></label>
+        <label class="field"><span>出资人首笔投入 B（元）</span><input id="n-b" type="number" step="0.01" min="0.01" inputmode="decimal" required></label>
+        <label class="field"><span>设置密码</span><input id="n-pw" type="password" autocomplete="new-password" required minlength="8"></label>
+        <label class="field"><span>再次输入密码</span><input id="n-pw2" type="password" autocomplete="new-password" required minlength="8"></label>
+      </div>
+      <p class="small muted">门槛 6%，分成 25%。密码至少 8 位，请使用足够长、不易猜到的密码（仓库是公开的，任何人都能下载密文尝试破解）。忘记密码将无法恢复数据。</p>
+      <button class="primary" type="submit">创建</button>
+      <div class="msg" id="new-msg"></div>
+    </form>
+
+    <form id="load-form" class="card" autocomplete="off">
+      <h3>加载现有数据</h3>
+      <label class="field"><span>密码</span><input id="l-pw" type="password" autocomplete="current-password" required></label>
+      <div class="row form-actions">
+        <button class="primary" type="submit">从本站加载 data.enc</button>
+        <label class="btn">选择本地文件…<input id="l-file" type="file" accept=".enc" class="hidden"></label>
+      </div>
+      <div class="msg" id="load-msg"></div>
+    </form>
+  </section>
+
+  <!-- ───── 编辑 ───── -->
+  <section id="edit" class="hidden">
+    <div class="toolbar row" style="justify-content:space-between">
+      <span class="status" id="status"></span>
+      <span class="row">
+        <button class="primary" type="button" id="btn-export">导出</button>
+        <button type="button" id="btn-pw">修改密码</button>
+        <button type="button" id="btn-lock">锁定</button>
+      </span>
+    </div>
+
+    <h2>基本设置</h2>
+    <form id="set-form" class="card" autocomplete="off">
+      <div class="form-grid">
+        <label class="field"><span>管理人名称</span><input id="s-me" required></label>
+        <label class="field"><span>出资人名称</span><input id="s-friend" required></label>
+        <label class="field"><span>首笔资金日期</span><input id="s-date" type="date" required></label>
+        <label class="field"><span>管理人首笔 A（元）</span><input id="s-a" type="number" step="0.01" min="0.01" inputmode="decimal" required></label>
+        <label class="field"><span>出资人首笔 B（元）</span><input id="s-b" type="number" step="0.01" min="0.01" inputmode="decimal" required></label>
+      </div>
+      <p class="small muted" id="s-rates"></p>
+      <button type="submit">保存设置</button>
+      <div class="msg" id="set-msg"></div>
+    </form>
+
+    <h2>季度快照</h2>
+    <form id="snap-form" class="card" autocomplete="off">
+      <h3 id="snap-form-title">新增快照</h3>
+      <div class="form-grid">
+        <label class="field"><span>日期</span><input id="sn-date" type="date" required></label>
+        <label class="field"><span>期间</span><input id="sn-period" placeholder="如 2026Q3" required></label>
+        <label class="field"><span>账户总值（元，当天所有资金流动之后）</span><input id="sn-value" type="number" step="0.01" min="0" inputmode="decimal" required></label>
+        <label class="field"><span>截图（可选）</span><input id="sn-file" type="file" accept="image/*"></label>
+      </div>
+      <label class="field" style="margin-top:10px"><span>备注</span><input id="sn-note"></label>
+      <div class="live" id="sn-live"></div>
+      <div class="row form-actions">
+        <button class="primary" type="submit" id="sn-submit">新增</button>
+        <button type="button" id="sn-cancel" class="hidden">取消编辑</button>
+      </div>
+      <div class="msg" id="snap-msg"></div>
+    </form>
+    <div class="table-wrap" style="margin-top:12px"><table>
+      <thead><tr><th>日期</th><th class="left">期间</th><th>账户总值</th><th>净值</th><th class="left">截图</th><th class="left">备注</th><th class="left">操作</th></tr></thead>
+      <tbody id="snap-list"></tbody>
+    </table></div>
+
+    <h2>资金流动</h2>
+    <form id="flow-form" class="card" autocomplete="off">
+      <h3 id="flow-form-title">新增资金流动</h3>
+      <div class="form-grid">
+        <label class="field"><span>日期</span><input id="fl-date" type="date" required></label>
+        <label class="field"><span>谁</span><select id="fl-owner"><option value="friend"></option><option value="me"></option></select></label>
+        <label class="field"><span>类型</span><select id="fl-type"><option value="deposit">注资</option><option value="withdraw">提取</option></select></label>
+        <label class="field"><span>金额（元）</span><input id="fl-amount" type="number" step="0.01" min="0.01" inputmode="decimal" required></label>
+        <label class="field"><span>当时账户总值（元，这笔资金进出前一刻）</span><input id="fl-vb" type="number" step="0.01" min="0.01" inputmode="decimal" required></label>
+      </div>
+      <label class="field" style="margin-top:10px"><span>备注</span><input id="fl-note"></label>
+      <div class="live" id="fl-live">填写金额和当时账户总值后，这里会显示对应的净值和份数。</div>
+      <div class="row form-actions">
+        <button class="primary" type="submit" id="fl-submit">新增</button>
+        <button type="button" id="fl-cancel" class="hidden">取消编辑</button>
+      </div>
+      <div class="msg" id="flow-msg"></div>
+    </form>
+    <div class="table-wrap" style="margin-top:12px"><table>
+      <thead><tr><th>日期</th><th class="left">谁</th><th class="left">类型</th><th>金额</th><th>当时总值</th><th>当时净值</th><th>份数</th><th class="left">备注</th><th class="left">操作</th></tr></thead>
+      <tbody id="flow-list"></tbody>
+    </table></div>
+    <p class="small muted">同一天的多笔资金流动按列表中的先后顺序计算，每笔使用自己的“当时账户总值”。</p>
+
+    <div class="preview-head"><h2>计算结果预览</h2><span class="small muted">这就是查看页导出后显示的内容</span></div>
+    <div id="preview"></div>
+  </section>
+</main>
+
+<!-- 导出说明 -->
+<dialog id="export-dlg">
+  <h3>导出完成</h3>
+  <div id="export-body"></div>
+  <div class="row form-actions"><button type="button" class="primary" data-close>知道了</button></div>
+</dialog>
+
+<!-- 修改密码 -->
+<dialog id="pw-dlg">
+  <h3>修改密码</h3>
+  <form id="pw-form" autocomplete="off">
+    <div class="form-grid">
+      <label class="field"><span>当前密码</span><input id="pw-old" type="password" required></label>
+      <label class="field"><span>新密码（至少 8 位）</span><input id="pw-new" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label class="field"><span>再次输入新密码</span><input id="pw-new2" type="password" autocomplete="new-password" minlength="8" required></label>
+    </div>
+    <p class="small muted">所有截图都需要用新密码重新加密。下一步会从本站下载每张截图，用旧密码解密，再用新密码加密，最后和 data.enc 一起导出。</p>
+    <div class="row form-actions">
+      <button class="primary" type="submit" id="pw-start">开始重新加密</button>
+      <button type="button" data-close>取消</button>
+    </div>
+  </form>
+  <div id="pw-progress" class="msg"></div>
+  <div id="pw-missing" class="hidden">
+    <p class="neg">以下截图无法从本站获取，可以从本地选择对应的 .enc 文件（文件名需相同）：</p>
+    <pre class="files" id="pw-missing-list"></pre>
+    <label class="btn">选择本地截图文件…<input id="pw-files" type="file" accept=".enc" multiple class="hidden"></label>
+  </div>
+  <div class="row form-actions hidden" id="pw-finish-row">
+    <button class="primary" type="button" id="pw-finish">确认使用新密码</button>
+  </div>
+</dialog>
+
+<dialog id="shot-dlg">
+  <div class="row" style="justify-content:space-between"><b id="shot-title"></b><button type="button" data-close>关闭</button></div>
+  <div id="shot-body"></div>
+</dialog>
+
+<script type="module">
+import { compute, emptyData, quarterOf, isValidDate, dayNum, isYearEnd, todayStr } from './calc.js';
+import { encryptJSON, decryptJSON, encryptBytes, decryptBytes, imageMime, WrongPasswordError } from './crypto.js';
+import { renderDashboard, money, units, navf, esc, describeWhere } from './view.js';
+import { makeZip } from './zip.js';
+
+const $ = (id) => document.getElementById(id);
+
+// ───── 状态（只在内存中） ─────
+let password = null;
+let data = null;
+let dirty = false;
+let pendingShots = new Map();  // 文件名 → 加密后的字节（待导出）
+const localUrls = new Map();   // 文件名 → 本地预览 URL
+let removedShots = new Set();  // 已删除、需要从仓库中删除的截图
+let editSnap = null, editFlow = null;
+
+for (const dlg of document.querySelectorAll('dialog')) {
+  dlg.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => dlg.close()));
+}
+window.addEventListener('beforeunload', (e) => {
+  if (dirty) { e.preventDefault(); e.returnValue = ''; }
+});
+
+function setMsg(el, text, kind = 'neg') { el.className = 'msg ' + kind; el.innerHTML = text; }
+const num = (v) => (v === '' || v == null ? NaN : Number(v));
+
+// ───── 新建 ─────
+$('n-date').value = todayStr();
+$('new-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const msg = $('new-msg');
+  const A = num($('n-a').value), B = num($('n-b').value), date = $('n-date').value;
+  if (!isValidDate(date)) return setMsg(msg, '请填写有效的日期。');
+  if (!(A > 0) || !(B > 0)) return setMsg(msg, 'A 和 B 都必须大于 0。');
+  if ($('n-pw').value.length < 8) return setMsg(msg, '密码至少 8 位。');
+  if ($('n-pw').value !== $('n-pw2').value) return setMsg(msg, '两次输入的密码不一致。');
+  password = $('n-pw').value;
+  data = emptyData({ date, me: A, friend: B, names: { me: $('n-me').value.trim() || '我', friend: $('n-friend').value.trim() || '朋友' } });
+  dirty = true;
+  $('n-pw').value = $('n-pw2').value = '';
+  enterEditor();
+});
+
+// ───── 加载 ─────
+async function loadFrom(bufPromise) {
+  const msg = $('load-msg');
+  const pw = $('l-pw').value;
+  if (!pw) return setMsg(msg, '请先输入密码。');
+  setMsg(msg, '正在解密……', 'muted');
+  try {
+    const buf = await bufPromise;
+    const d = await decryptJSON(pw, buf);
+    if (!d || !d.inception) throw new Error('文件内容不是有效的账本数据。');
+    d.flows = d.flows || []; d.snapshots = d.snapshots || [];
+    password = pw; data = d; dirty = false;
+    $('l-pw').value = '';
+    setMsg(msg, '', 'muted');
+    enterEditor();
+  } catch (err) {
+    setMsg(msg, esc(err instanceof WrongPasswordError ? '密码错误，请重试。' : err.message || String(err)));
+  }
+}
+$('load-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  loadFrom(fetch('data.enc', { cache: 'no-store' }).then((r) => {
+    if (r.status === 404) throw new Error('本站还没有 data.enc，请先新建数据集。');
+    if (!r.ok) throw new Error(`下载失败（HTTP ${r.status}）`);
+    return r.arrayBuffer();
+  }));
+});
+$('l-file').addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  if (f) loadFrom(f.arrayBuffer());
+  e.target.value = '';
+});
+
+// ───── 编辑器 ─────
+function enterEditor() {
+  $('start').classList.add('hidden');
+  $('edit').classList.remove('hidden');
+  fillSettings();
+  resetSnapForm();
+  resetFlowForm();
+  render();
+}
+
+function markDirty() { dirty = true; }
+
+function render() {
+  const S = compute(data).settings;
+  $('fl-owner').options[0].textContent = S.names.friend + '（出资人）';
+  $('fl-owner').options[1].textContent = S.names.me + '（管理人）';
+  const n = pendingShots.size;
+  $('status').innerHTML = dirty
+    ? `<span class="neg">有未导出的修改${n ? `（含 ${n} 张新截图）` : ''}</span>`
+    : '<span class="muted">所有修改都已导出</span>';
+  const res = compute(data);
+  renderLists(res);
+  renderDashboard($('preview'), data, res, { onShot });
+}
+
+// 尝试应用修改：如果产生新的校验错误则拒绝
+function tryApply(mutate, msgEl) {
+  const cand = structuredClone(data);
+  mutate(cand);
+  sortData(cand);
+  const key = (d, e) => describeWhere(d, e).replace(/（第 \d+ 条）/, '') + e.msg;
+  const before = new Set(compute(data).errors.map((e) => key(data, e)));
+  const errs = compute(cand).errors.filter((e) => !before.has(key(cand, e)));
+  if (errs.length) {
+    setMsg(msgEl, '未保存：<ul>' + errs.map((e) => `<li>${esc(describeWhere(cand, e))}：${esc(e.msg)}</li>`).join('') + '</ul>');
+    return false;
+  }
+  data = cand;
+  markDirty();
+  render();
+  return true;
+}
+
+// 按日期排序（稳定排序：同一天保持录入顺序）
+function sortData(d) {
+  d.flows.sort((a, b) => dayNum(a.date) - dayNum(b.date));
+  d.snapshots.sort((a, b) => dayNum(a.date) - dayNum(b.date));
+}
+
+// ───── 设置 ─────
+function fillSettings() {
+  const S = compute(data).settings;
+  $('s-me').value = S.names.me;
+  $('s-friend').value = S.names.friend;
+  $('s-date').value = data.inception.date;
+  $('s-a').value = data.inception.me;
+  $('s-b').value = data.inception.friend;
+  $('s-rates').textContent = `门槛收益 ${(S.hurdle * 100).toFixed(2)}%，分成比例 ${(S.share * 100).toFixed(2)}%（固定，不在此修改）。`;
+}
+$('set-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const msg = $('set-msg');
+  const A = num($('s-a').value), B = num($('s-b').value), date = $('s-date').value;
+  if (!(A > 0) || !(B > 0)) return setMsg(msg, 'A 和 B 都必须大于 0。');
+  if (!isValidDate(date)) return setMsg(msg, '日期无效。');
+  const ok = tryApply((d) => {
+    d.settings.names = { me: $('s-me').value.trim() || '我', friend: $('s-friend').value.trim() || '朋友' };
+    d.inception = { date, me: A, friend: B };
+  }, msg);
+  if (ok) setMsg(msg, '已保存（尚未导出）。', 'muted');
+});
+
+// ───── 季度快照 ─────
+let periodTouched = false;
+$('sn-date').addEventListener('input', () => {
+  if (!periodTouched && isValidDate($('sn-date').value)) $('sn-period').value = quarterOf($('sn-date').value);
+  snapLive();
+});
+$('sn-period').addEventListener('input', () => { periodTouched = true; });
+$('sn-value').addEventListener('input', snapLive);
+
+function snapLive() {
+  const date = $('sn-date').value, value = num($('sn-value').value);
+  const el = $('sn-live');
+  if (!isValidDate(date) || !(value >= 0)) { el.textContent = ''; return; }
+  const cand = structuredClone(data);
+  const rec = { date, period: $('sn-period').value, value };
+  if (editSnap != null) cand.snapshots[editSnap] = { ...cand.snapshots[editSnap], ...rec }; else cand.snapshots.push(rec);
+  const r = compute(cand).snapshots.find((x) => x.date === date && !x.error);
+  if (!r) { el.textContent = ''; return; }
+  el.innerHTML = `对应净值 <b>${navf(r.nav)}</b>；${esc(data.settings.names?.friend || '朋友')}价值 ${money(r.values.friend)}，${esc(data.settings.names?.me || '我')}价值 ${money(r.values.me)}`
+    + (r.friend.fee != null ? `；${r.friend.feeKind === 'settled' ? '年末结算分成' : '预估分成'} ${money(r.friend.fee)}` : '')
+    + (isYearEnd(date) ? '<br><b>12 月 31 日快照：保存后将按此进行年末结算。</b>' : '');
+}
+
+function resetSnapForm() {
+  editSnap = null; periodTouched = false;
+  $('snap-form').reset();
+  $('sn-date').value = todayStr();
+  $('sn-period').value = quarterOf(todayStr());
+  $('snap-form-title').textContent = '新增快照';
+  $('sn-submit').textContent = '新增';
+  $('sn-cancel').classList.add('hidden');
+  $('sn-live').textContent = '';
+}
+$('sn-cancel').addEventListener('click', () => { resetSnapForm(); setMsg($('snap-msg'), '', 'muted'); });
+
+function shotName(period, date, idx) {
+  const safe = (s) => String(s).replace(/[^0-9A-Za-z_-]/g, '');
+  let name = (safe(period) || safe(date)) + '.enc';
+  const taken = data.snapshots.some((s, i) => i !== idx && s.shot === name);
+  if (taken) name = `${safe(period)}-${safe(date)}.enc`;
+  return name;
+}
+
+$('snap-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = $('snap-msg');
+  const date = $('sn-date').value, period = $('sn-period').value.trim(), value = num($('sn-value').value);
+  if (!isValidDate(date)) return setMsg(msg, '日期无效。');
+  if (!period) return setMsg(msg, '请填写期间。');
+  if (!(value >= 0)) return setMsg(msg, '账户总值无效。');
+  const file = $('sn-file').files[0];
+  const idx = editSnap;
+  const old = idx != null ? data.snapshots[idx] : null;
+  let shot = old ? old.shot || '' : '';
+  let enc = null, preview = null;
+  if (file) {
+    try {
+      setMsg(msg, '正在压缩并加密截图……', 'muted');
+      const img = await compressImage(file);
+      enc = await encryptBytes(password, img.bytes);
+      preview = URL.createObjectURL(new Blob([img.bytes], { type: img.type }));
+      shot = shot || shotName(period, date, idx);
+    } catch (err) {
+      return setMsg(msg, '截图处理失败：' + esc(err.message || String(err)));
+    }
+  }
+  const rec = { date, period, value, shot, note: $('sn-note').value.trim() };
+  const ok = tryApply((d) => {
+    if (idx != null) d.snapshots[idx] = rec; else d.snapshots.push(rec);
+  }, msg);
+  if (!ok) return;
+  if (enc) {
+    pendingShots.set(shot, enc);
+    if (localUrls.has(shot)) URL.revokeObjectURL(localUrls.get(shot));
+    localUrls.set(shot, preview);
+    removedShots.delete(shot);
+  }
+  resetSnapForm();
+  render();
+  setMsg(msg, `已${idx != null ? '更新' : '新增'}快照 ${esc(date)}${enc ? '，截图已加密，导出时一起下载' : ''}。`, 'muted');
+});
+
+// ───── 资金流动 ─────
+['fl-date', 'fl-owner', 'fl-type', 'fl-amount', 'fl-vb'].forEach((id) => $(id).addEventListener('input', flowLive));
+
+function flowRecord() {
+  return {
+    date: $('fl-date').value, owner: $('fl-owner').value, type: $('fl-type').value,
+    amount: num($('fl-amount').value), valueBefore: num($('fl-vb').value), note: $('fl-note').value.trim(),
+  };
+}
+
+// 即时显示对应的净值和份数（用完整计算得出，与保存后的结果一致）
+function flowLive() {
+  const el = $('fl-live');
+  const rec = flowRecord();
+  if (!isValidDate(rec.date) || !(rec.valueBefore > 0)) { el.textContent = '填写日期和当时账户总值后，这里会显示对应的净值和份数。'; return; }
+  const cand = structuredClone(data);
+  const probe = { ...rec, amount: rec.amount > 0 ? rec.amount : 0.01, __probe: true };
+  if (editFlow != null) cand.flows[editFlow] = probe; else cand.flows.push(probe);
+  sortData(cand);
+  const res = compute(cand);
+  const r = res.flows.find((x) => x.__probe);
+  if (!r) { el.textContent = ''; return; }
+  if (r.nav == null) { el.innerHTML = `<span class="neg">${esc(r.error)}</span>`; return; }
+  const name = esc(res.settings.names[rec.owner]);
+  const unitsBefore = (r.unitsAfter ? (rec.type === 'deposit' ? r.unitsAfter[rec.owner] - r.units : r.unitsAfter[rec.owner] + r.units) : null);
+  let line = `当时净值 <b>${navf(r.nav)}</b>`;
+  if (rec.amount > 0) line += `；${rec.type === 'deposit' ? '买入' : '赎回'} <b>${units(rec.amount / r.nav)}</b> 份`;
+  if (unitsBefore != null) line += `；${name}当时持有 ${units(unitsBefore)} 份，价值 ${money(unitsBefore * r.nav)}`;
+  if (r.error) line += `<br><span class="neg">${esc(r.error)}</span>`;
+  el.innerHTML = line;
+}
+
+function resetFlowForm() {
+  editFlow = null;
+  $('flow-form').reset();
+  $('fl-date').value = todayStr();
+  $('flow-form-title').textContent = '新增资金流动';
+  $('fl-submit').textContent = '新增';
+  $('fl-cancel').classList.add('hidden');
+  flowLive();
+}
+$('fl-cancel').addEventListener('click', () => { resetFlowForm(); setMsg($('flow-msg'), '', 'muted'); });
+
+$('flow-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const msg = $('flow-msg');
+  const rec = flowRecord();
+  if (!isValidDate(rec.date)) return setMsg(msg, '日期无效。');
+  if (!(rec.amount > 0)) return setMsg(msg, '金额必须大于 0。');
+  if (!(rec.valueBefore > 0)) return setMsg(msg, '“当时账户总值”为必填项，且必须大于 0。');
+  const idx = editFlow;
+  const ok = tryApply((d) => { if (idx != null) d.flows[idx] = rec; else d.flows.push(rec); }, msg);
+  if (!ok) return;
+  resetFlowForm();
+  setMsg(msg, `已${idx != null ? '更新' : '新增'}资金流动 ${esc(rec.date)}。`, 'muted');
+});
+
+// ───── 列表 ─────
+function renderLists(res) {
+  const S = res.settings;
+  const snapRows = data.snapshots.map((s, i) => {
+    const r = res.snapshots.find((x) => x.index === i) || {};
+    const shotState = !s.shot ? '<span class="muted">无</span>'
+      : pendingShots.has(s.shot) ? `<button class="link" data-view="${i}" type="button">${esc(s.shot)}</button> <span class="tag">待导出</span>`
+        : `<button class="link" data-view="${i}" type="button">${esc(s.shot)}</button>`;
+    return `<tr><td>${esc(s.date)}</td><td class="left">${esc(s.period || '')}</td><td>${money(+s.value)}</td><td>${r.error ? `<span class="neg">${esc(r.error)}</span>` : navf(r.nav)}</td>
+      <td class="left">${shotState}</td><td class="note">${esc(s.note || '')}</td>
+      <td class="actions left"><button type="button" data-es="${i}">编辑</button> <button type="button" class="danger" data-ds="${i}">删除</button></td></tr>`;
+  });
+  $('snap-list').innerHTML = snapRows.length ? snapRows.reverse().join('') : '<tr><td colspan="7" class="left muted">暂无</td></tr>';
+  const flowRows = data.flows.map((f, i) => {
+    const r = res.flows.find((x) => x.index === i) || {};
+    return `<tr><td>${esc(f.date)}</td><td class="left">${esc(S.names[f.owner] || f.owner)}</td><td class="left">${f.type === 'deposit' ? '注资' : '提取'}</td>
+      <td>${money(+f.amount)}</td><td>${money(+f.valueBefore)}</td><td>${navf(r.nav)}</td>
+      <td>${r.error ? `<span class="neg">${esc(r.error)}</span>` : (f.type === 'deposit' ? '+' : '−') + units(r.units)}</td>
+      <td class="note">${esc(f.note || '')}</td>
+      <td class="actions left"><button type="button" data-ef="${i}">编辑</button> <button type="button" class="danger" data-df="${i}">删除</button></td></tr>`;
+  });
+  $('flow-list').innerHTML = flowRows.length ? flowRows.reverse().join('') : '<tr><td colspan="9" class="left muted">暂无</td></tr>';
+}
+
+$('snap-list').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.view != null) { const s = data.snapshots[+b.dataset.view]; onShot(s); return; }
+  if (b.dataset.es != null) {
+    const i = +b.dataset.es, s = data.snapshots[i];
+    editSnap = i; periodTouched = true;
+    $('sn-date').value = s.date; $('sn-period').value = s.period || ''; $('sn-value').value = s.value; $('sn-note').value = s.note || '';
+    $('sn-file').value = '';
+    $('snap-form-title').textContent = `编辑快照 ${s.date}${s.shot ? '（重新选择截图将替换原截图）' : ''}`;
+    $('sn-submit').textContent = '保存修改';
+    $('sn-cancel').classList.remove('hidden');
+    snapLive();
+    $('snap-form').scrollIntoView({ behavior: 'smooth' });
+  }
+  if (b.dataset.ds != null) {
+    const i = +b.dataset.ds, s = data.snapshots[i];
+    if (!confirm(`确定删除 ${s.date} 的快照吗？`)) return;
+    const ok = tryApply((d) => { d.snapshots.splice(i, 1); }, $('snap-msg'));
+    if (ok && s.shot) {
+      if (pendingShots.has(s.shot)) pendingShots.delete(s.shot); else removedShots.add(s.shot);
+      if (editSnap === i) resetSnapForm();
+      render();
+    } else if (ok && editSnap === i) resetSnapForm();
+  }
+});
+
+$('flow-list').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.ef != null) {
+    const i = +b.dataset.ef, f = data.flows[i];
+    editFlow = i;
+    $('fl-date').value = f.date; $('fl-owner').value = f.owner; $('fl-type').value = f.type;
+    $('fl-amount').value = f.amount; $('fl-vb').value = f.valueBefore; $('fl-note').value = f.note || '';
+    $('flow-form-title').textContent = `编辑资金流动 ${f.date}`;
+    $('fl-submit').textContent = '保存修改';
+    $('fl-cancel').classList.remove('hidden');
+    flowLive();
+    $('flow-form').scrollIntoView({ behavior: 'smooth' });
+  }
+  if (b.dataset.df != null) {
+    const i = +b.dataset.df, f = data.flows[i];
+    if (!confirm(`确定删除 ${f.date} 的这笔资金流动吗？`)) return;
+    if (tryApply((d) => { d.flows.splice(i, 1); }, $('flow-msg')) && editFlow === i) resetFlowForm();
+  }
+});
+
+// ───── 截图查看 ─────
+async function onShot(s) {
+  const dlg = $('shot-dlg'), body = $('shot-body');
+  $('shot-title').textContent = `${s.period || ''} ${s.date} 截图`;
+  body.innerHTML = '<p class="spinner">正在加载……</p>';
+  dlg.showModal();
+  try {
+    let url = localUrls.get(s.shot);
+    if (!url) {
+      let buf = pendingShots.get(s.shot);
+      if (!buf) {
+        const r = await fetch('shots/' + encodeURIComponent(s.shot), { cache: 'no-store' });
+        if (!r.ok) throw new Error(`本站没有 shots/${s.shot}（HTTP ${r.status}），可能还没上传。`);
+        buf = await r.arrayBuffer();
+      }
+      const bytes = await decryptBytes(password, buf);
+      url = URL.createObjectURL(new Blob([bytes], { type: imageMime(bytes) }));
+      localUrls.set(s.shot, url);
+    }
+    body.innerHTML = `<img alt="截图" src="${url}">`;
+  } catch (err) {
+    body.innerHTML = `<p class="neg">${esc(err instanceof WrongPasswordError ? '无法用当前密码解密这张截图。' : err.message)}</p>`;
+  }
+}
+
+// ───── 图片压缩：最长边 1600px，WebP（不支持时用 JPEG），质量 0.8 ─────
+async function compressImage(file) {
+  let src;
+  try {
+    src = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  } catch {
+    src = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('无法读取这张图片'));
+      img.src = URL.createObjectURL(file);
+    });
+  }
+  const w0 = src.width || src.naturalWidth, h0 = src.height || src.naturalHeight;
+  const k = Math.min(1, 1600 / Math.max(w0, h0));
+  const w = Math.max(1, Math.round(w0 * k)), h = Math.max(1, Math.round(h0 * k));
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(src, 0, 0, w, h);
+  const toBlob = (type) => new Promise((res) => canvas.toBlob(res, type, 0.8));
+  let blob = await toBlob('image/webp');
+  if (!blob || blob.type !== 'image/webp') blob = await toBlob('image/jpeg');
+  if (!blob) throw new Error('图片压缩失败');
+  return { bytes: new Uint8Array(await blob.arrayBuffer()), type: blob.type };
+}
+
+// ───── 导出 ─────
+function download(name, bytes, type = 'application/octet-stream') {
+  const url = URL.createObjectURL(new Blob([bytes], { type }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+$('btn-export').addEventListener('click', async () => {
+  const btn = $('btn-export');
+  const errs = compute(data).errors;
+  if (errs.length && !confirm(`数据中还有 ${errs.length} 处错误（这些记录不会被计入），仍然导出吗？`)) return;
+  btn.disabled = true; btn.textContent = '正在加密……';
+  try {
+    const dataEnc = await encryptJSON(password, data);
+    const shots = [...pendingShots.entries()];
+    const stamp = todayStr().replaceAll('-', '');
+    let body = '';
+    if (shots.length) {
+      const zip = makeZip([{ name: 'data.enc', data: dataEnc }, ...shots.map(([n, b]) => ({ name: 'shots/' + n, data: b }))]);
+      download(`hurdle-ledger-upload-${stamp}.zip`, zip, 'application/zip');
+      body += `<p>已下载 <b>hurdle-ledger-upload-${stamp}.zip</b>。解压后按下面的位置上传到仓库（同名文件直接覆盖）：</p>
+        <pre class="files">data.enc            → 仓库根目录
+${shots.map(([n]) => `shots/${esc(n)}`.padEnd(20) + '→ 仓库的 shots/ 目录').join('\n')}</pre>`;
+    } else {
+      download('data.enc', dataEnc);
+      body += `<p>已下载 <b>data.enc</b>。请上传到仓库根目录，覆盖原来的 data.enc。</p>`;
+    }
+    if (removedShots.size) {
+      body += `<p>以下截图对应的快照已被删除，可以在仓库中删除这些文件：</p><pre class="files">${[...removedShots].map((n) => 'shots/' + esc(n)).join('\n')}</pre>`;
+    }
+    body += `<p class="small muted">上传方法：在 GitHub 打开仓库 → Add file → Upload files，把文件拖进去（shots 下的文件要先进入 shots 目录再上传）→ Commit changes。约 1～2 分钟后查看页即可看到更新。</p>`;
+    $('export-body').innerHTML = body;
+    $('export-dlg').showModal();
+    pendingShots = new Map();
+    removedShots = new Set();
+    dirty = false;
+    render();
+  } catch (err) {
+    alert('导出失败：' + (err.message || err));
+  } finally {
+    btn.disabled = false; btn.textContent = '导出';
+  }
+});
+
+// ───── 修改密码 ─────
+let pwJob = null; // { oldPw, newPw, todo: Map(name → status), done: Map(name → enc) }
+$('btn-pw').addEventListener('click', () => {
+  pwJob = null;
+  $('pw-form').reset();
+  $('pw-form').classList.remove('hidden');
+  $('pw-progress').textContent = '';
+  $('pw-missing').classList.add('hidden');
+  $('pw-finish-row').classList.add('hidden');
+  $('pw-dlg').showModal();
+});
+
+$('pw-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const prog = $('pw-progress');
+  if ($('pw-old').value !== password) return setMsg(prog, '当前密码不正确。');
+  if ($('pw-new').value.length < 8) return setMsg(prog, '新密码至少 8 位。');
+  if ($('pw-new').value !== $('pw-new2').value) return setMsg(prog, '两次输入的新密码不一致。');
+  if ($('pw-new').value === password) return setMsg(prog, '新密码与当前密码相同。');
+  pwJob = { oldPw: password, newPw: $('pw-new').value, missing: [], done: new Map() };
+  $('pw-form').classList.add('hidden');
+  const names = [...new Set(data.snapshots.map((s) => s.shot).filter(Boolean))];
+  let i = 0;
+  for (const name of names) {
+    i++;
+    setMsg(prog, `正在重新加密截图 ${i}/${names.length}：${esc(name)}……`, 'muted');
+    try {
+      let buf = pendingShots.get(name);
+      if (!buf) {
+        const r = await fetch('shots/' + encodeURIComponent(name), { cache: 'no-store' });
+        if (!r.ok) throw new Error('missing');
+        buf = await r.arrayBuffer();
+      }
+      const plain = await decryptBytes(pwJob.oldPw, buf);
+      pwJob.done.set(name, await encryptBytes(pwJob.newPw, plain));
+    } catch {
+      pwJob.missing.push(name);
+    }
+  }
+  updatePwMissing();
+});
+
+function updatePwMissing() {
+  const prog = $('pw-progress');
+  const total = pwJob.done.size + pwJob.missing.length;
+  if (pwJob.missing.length) {
+    $('pw-missing').classList.remove('hidden');
+    $('pw-missing-list').textContent = pwJob.missing.join('\n');
+    setMsg(prog, `已重新加密 ${pwJob.done.size}/${total} 张截图。缺少的截图如果不补充，换密码后将无法查看。`, 'neg');
+  } else {
+    $('pw-missing').classList.add('hidden');
+    setMsg(prog, `已重新加密全部 ${total} 张截图。点击“确认使用新密码”，然后导出并上传所有文件。`, 'muted');
+  }
+  $('pw-finish-row').classList.remove('hidden');
+}
+
+$('pw-files').addEventListener('change', async (e) => {
+  for (const f of e.target.files) {
+    if (!pwJob.missing.includes(f.name)) continue;
+    try {
+      const plain = await decryptBytes(pwJob.oldPw, await f.arrayBuffer());
+      pwJob.done.set(f.name, await encryptBytes(pwJob.newPw, plain));
+      pwJob.missing = pwJob.missing.filter((n) => n !== f.name);
+    } catch { /* 保留在缺失列表中 */ }
+  }
+  e.target.value = '';
+  updatePwMissing();
+});
+
+$('pw-finish').addEventListener('click', () => {
+  if (pwJob.missing.length && !confirm(`还有 ${pwJob.missing.length} 张截图没有重新加密，确定继续吗？`)) return;
+  password = pwJob.newPw;
+  for (const [n, b] of pwJob.done) pendingShots.set(n, b);
+  for (const n of pwJob.missing) pendingShots.delete(n);
+  pwJob = null;
+  dirty = true;
+  $('pw-dlg').close();
+  render();
+  alert('新密码已生效。请点击“导出”，并把 data.enc 和全部截图上传到仓库，覆盖原文件。在上传之前，查看页仍然使用旧密码。');
+});
+
+// ───── 锁定 ─────
+$('btn-lock').addEventListener('click', () => {
+  if (dirty && !confirm('有未导出的修改，锁定后会丢失。确定吗？')) return;
+  password = null; data = null; dirty = false;
+  pendingShots = new Map(); removedShots = new Set();
+  for (const u of localUrls.values()) URL.revokeObjectURL(u);
+  localUrls.clear();
+  $('preview').innerHTML = '';
+  $('edit').classList.add('hidden');
+  $('start').classList.remove('hidden');
+});
+</script>
+</body>
+</html>
