@@ -72,20 +72,18 @@
 
     <details class="card" id="pub-card" style="margin-top:12px">
       <summary><b>自动发布到 GitHub</b> <span id="pub-state" class="small"></span></summary>
-      <form id="pub-form" style="margin-top:10px">
-        <input type="text" name="username" autocomplete="username" value="github-token" class="sr-only" tabindex="-1" aria-hidden="true">
-        <p class="small muted">连接后，每次修改都会自动加密并直接提交到仓库，约 1～2 分钟后查看页自动更新，不用再下载、上传文件。需要一个只授权本仓库的 GitHub token（创建方法见 README）。勾选“在本设备记住 token”后，token 会用账本密码加密保存在这个浏览器里，以后输入账本密码就会自动连接；不勾选则只保存在本页面的内存中，关闭页面后即清除。</p>
+      <form id="pub-form" autocomplete="off" style="margin-top:10px">
+        <p class="small muted">连接后，每次修改都会自动加密并直接提交到仓库，约 1～2 分钟后查看页自动更新，不用再下载、上传文件。需要一个只授权本仓库的 GitHub token（创建方法见 README）。token 只保存在本页面的内存中，不交给浏览器的密码管理器，也不写入浏览器存储；关闭或锁定页面后即清除，下次编辑时重新粘贴。</p>
         <div class="form-grid">
           <label class="field"><span>GitHub 用户名</span><input id="gh-owner" required></label>
           <label class="field"><span>仓库名</span><input id="gh-repo" required></label>
           <label class="field"><span>分支</span><input id="gh-branch" value="main" required></label>
-          <label class="field"><span>Token</span><input id="gh-token" type="password" class="pw" name="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="github_pat_…"></label>
+          <label class="field"><span>Token</span><input id="gh-token" type="text" class="pw masked" data-mask="css" name="gh-token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore placeholder="github_pat_…"></label>
         </div>
-        <label class="check"><input type="checkbox" id="gh-remember" checked>在本设备记住 token（用账本密码加密后保存在这个浏览器里，不会进入仓库）</label>
         <label class="check"><input type="checkbox" id="gh-auto" checked>修改后自动发布</label>
         <div class="row form-actions">
           <button type="submit" class="primary">连接</button>
-          <button type="button" id="gh-forget">断开并忘记 token</button>
+          <button type="button" id="gh-forget">断开</button>
           <button type="button" id="gh-reload">从仓库重新加载最新数据</button>
         </div>
         <div class="msg" id="pub-msg"></div>
@@ -201,7 +199,7 @@ import { compute, emptyData, quarterOf, isValidDate, dayNum, isYearEnd, todayStr
 import { encryptJSON, decryptJSON, encryptBytes, decryptBytes, imageMime, WrongPasswordError } from './crypto.js';
 import { renderDashboard, money, units, navf, esc, describeWhere, setupPasswordFields } from './view.js';
 import { makeZip } from './zip.js';
-import { GitHubRepo, detectRepo, gitBlobSha, bytesToBase64, base64ToBytes } from './github.js';
+import { GitHubRepo, detectRepo, gitBlobSha } from './github.js';
 
 const $ = (id) => document.getElementById(id);
 setupPasswordFields();
@@ -216,8 +214,8 @@ let removedShots = new Set();  // 已删除、需要从仓库中删除的截图
 let editSnap = null, editFlow = null;
 // 发布状态（全部只在内存中）
 let gh = null;                // GitHubRepo，含 token
-// 本设备记住的连接信息：仓库名 + 用账本密码加密的 token（只在你自己的浏览器里，不含任何账本数据）
-const PUB_KEY = 'hurdle-ledger.publish';
+// 清除旧版本曾保存在浏览器存储里的 token（现在 token 只放在内存中）
+try { localStorage.removeItem('hurdle-ledger.publish'); } catch { /* 忽略 */ }
 let autoPublish = true;
 let baseDataSha = null;       // 加载时 data.enc 的 git blob sha；null 表示仓库里应当还没有 data.enc
 let editVersion = 0;
@@ -248,7 +246,7 @@ $('new-form').addEventListener('submit', (e) => {
   dirty = true;
   baseDataSha = null;
   $('n-pw').value = $('n-pw2').value = '';
-  unlockSavedToken(password).finally(enterEditor);
+  enterEditor();
 });
 
 // ───── 加载 ─────
@@ -258,7 +256,6 @@ async function loadFrom(getBytes, fromFile = false) {
   if (!pw) return setMsg(msg, '请先输入密码。');
   setMsg(msg, '正在下载并解密……', 'muted');
   try {
-    await unlockSavedToken(pw);
     const buf = new Uint8Array(await getBytes());
     const d = await decryptJSON(pw, buf);
     // 从本地文件加载时，仓库里可能还没有上传这个文件：允许仓库中“没有 data.enc”或“正是这个文件”
@@ -276,13 +273,6 @@ async function loadFrom(getBytes, fromFile = false) {
 $('load-form').addEventListener('submit', (e) => {
   e.preventDefault();
   loadFrom(async () => {
-    // 已记住 token 时直接从仓库读取最新版本，不受 Pages 部署延迟影响
-    if (gh) {
-      try {
-        const b = await gh.readFile('data.enc');
-        if (b) return b;
-      } catch { /* 读取失败时退回本站 */ }
-    }
     const r = await fetch('data.enc', { cache: 'no-store' });
     if (r.status === 404) throw new Error('本站还没有 data.enc，请先新建数据集。');
     if (!r.ok) throw new Error(`下载失败（HTTP ${r.status}）`);
@@ -742,7 +732,6 @@ $('pw-files').addEventListener('change', async (e) => {
 $('pw-finish').addEventListener('click', () => {
   if (pwJob.missing.length && !confirm(`还有 ${pwJob.missing.length} 张截图没有重新加密，确定继续吗？`)) return;
   password = pwJob.newPw;
-  saveToken(); // 本设备记住的 token 改用新密码加密
   for (const [n, b] of pwJob.done) pendingShots.set(n, b);
   for (const n of pwJob.missing) pendingShots.delete(n);
   pwJob = null;
@@ -767,33 +756,6 @@ $('btn-lock').addEventListener('click', () => {
 });
 
 // ───── 自动发布到 GitHub ─────
-function readSaved() {
-  try { return JSON.parse(localStorage.getItem(PUB_KEY)) || null; } catch { return null; }
-}
-
-// 用账本密码解开本设备记住的 token，成功则自动连接
-async function unlockSavedToken(pw) {
-  const saved = readSaved();
-  if (!saved || !saved.tokenEnc) return;
-  $('gh-owner').value = saved.owner || ''; $('gh-repo').value = saved.repo || ''; $('gh-branch').value = saved.branch || 'main';
-  try {
-    const token = new TextDecoder().decode(await decryptBytes(pw, base64ToBytes(saved.tokenEnc)));
-    gh = new GitHubRepo({ owner: saved.owner, repo: saved.repo, branch: saved.branch || 'main', token });
-  } catch { /* 账本密码改过：需要重新粘贴 token */ }
-}
-
-async function saveToken() {
-  if (!gh || !password || !$('gh-remember').checked) return;
-  try {
-    const tokenEnc = bytesToBase64(await encryptBytes(password, new TextEncoder().encode(gh.token)));
-    localStorage.setItem(PUB_KEY, JSON.stringify({ owner: gh.owner, repo: gh.repo, branch: gh.branch, tokenEnc }));
-  } catch { /* 浏览器禁止存储时（如隐私模式）只在本次使用 */ }
-}
-
-function forgetToken() {
-  try { localStorage.removeItem(PUB_KEY); } catch { /* 忽略 */ }
-}
-
 function fillPublish() {
   const d = detectRepo();
   if (!$('gh-owner').value) $('gh-owner').value = d.owner || '';
@@ -819,12 +781,11 @@ $('pub-form').addEventListener('submit', async (e) => {
     return setMsg(msg, esc(err.message));
   }
   gh = repo;
-  if ($('gh-remember').checked) await saveToken(); else forgetToken();
   $('gh-token').value = '';
   $('gh-token').placeholder = '已连接（如需更换，在此输入新 token）';
   setMsg(msg, `已连接 ${esc(repo.owner)}/${esc(repo.repo)}（${esc(repo.branch)} 分支）。`, 'muted');
   updateStatus();
-  $('pub-card').open = false; // 收起表单：浏览器据此判断提交成功，并提示保存 token
+  $('pub-card').open = false;
   if (dirty) schedulePublish();
 });
 $('gh-auto').addEventListener('change', () => {
@@ -833,10 +794,9 @@ $('gh-auto').addEventListener('change', () => {
 });
 $('gh-forget').addEventListener('click', () => {
   gh = null;
-  forgetToken();
   clearTimeout(publishTimer);
   $('gh-token').placeholder = 'github_pat_…';
-  setMsg($('pub-msg'), '已断开，并已从本设备删除 token。', 'muted');
+  setMsg($('pub-msg'), '已断开。', 'muted');
   updateStatus();
 });
 

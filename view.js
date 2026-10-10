@@ -27,17 +27,21 @@ export function setupPasswordFields(root = document) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'pw-toggle';
+    // data-mask="css"：不是密码框（不让密码管理器保存），用 CSS 显示为圆点
+    const css = input.dataset.mask === 'css';
+    const isHidden = () => (css ? input.classList.contains('masked') : input.type === 'password');
     const sync = () => {
-      const hidden = input.type === 'password';
+      const hidden = isHidden();
       btn.textContent = hidden ? '显示' : '隐藏';
       btn.setAttribute('aria-label', hidden ? '显示密码' : '隐藏密码');
     };
     btn.addEventListener('click', () => {
-      input.type = input.type === 'password' ? 'text' : 'password';
+      if (css) input.classList.toggle('masked');
+      else input.type = input.type === 'password' ? 'text' : 'password';
       sync();
       input.focus();
     });
-    if (input.form) input.form.addEventListener('submit', () => { input.type = 'password'; sync(); }, true);
+    if (input.form) input.form.addEventListener('submit', () => { if (css) input.classList.add('masked'); else input.type = 'password'; sync(); }, true);
     wrap.appendChild(btn);
     sync();
   });
