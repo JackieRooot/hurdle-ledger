@@ -59,11 +59,11 @@ test('例 5：首笔投入在年中，门槛仍按全年 6%', () => {
   const r = compute(data(50, 100, [], [snap('2026-09-30', 157.5), snap('2026-12-31', 165)], '2026-07-01'), { asOf: '2026-12-31' });
   const y = year(r, 2026);
   close(y.T, 106); close(y.fee, 1);
-  // 季度预估：已过天数从 1 月 1 日起算（9 月 30 日 = 273 天）
+  // 季度预估：第一年首笔投入始终按全年 6% 满额，不按已过天数折算
   const q3 = r.snapshots[0];
-  close(q3.friend.T, 100 * (1 + 0.06 * 273 / 365));
+  close(q3.friend.T, 106);
   assert.equal(q3.friend.feeKind, 'estimate');
-  close(q3.friend.fee, (105 - 100 * (1 + 0.06 * 273 / 365)) * 0.25);
+  close(q3.friend.fee, 0);
   // 年中季度预估不转移份额
   close(q3.units.friend, 100);
 });
@@ -92,8 +92,8 @@ test('朋友年中提取', () => {
 });
 
 test('朋友提取不能超过 持有价值 − 当时预估分成', () => {
-  // 7 月 2 日账户 225（净值 1.5），朋友价值 150；已过 183 天，T = 100 × (1 + 6% × 183/365)
-  const T = 100 * (1 + 0.06 * 183 / 365);
+  // 7 月 2 日账户 225（净值 1.5），朋友价值 150；第一年首笔按全年满额，T = 106
+  const T = 106;
   const est = (150 - T) * 0.25;
   const bad = compute(data(50, 100, [flow('2026-07-02', 'friend', 'withdraw', 140, 225)], []), { asOf: '2026-07-02' });
   assert.equal(bad.errors.length, 1);
@@ -234,7 +234,7 @@ test('年末门槛线（不提成线）在年中就显示全年数值', () => {
   // 例 5 的数据：9 月 30 日时年末门槛线应为 106
   const r = compute(data(50, 100, [], [snap('2026-09-30', 157.5)], '2026-07-01'), { asOf: '2026-10-10' });
   close(r.current.friend.TYearEnd, 106);
-  close(r.current.friend.T, 100 * (1 + 0.06 * 273 / 365));
+  close(r.current.friend.T, 106); // 第一年首笔不折算
   assert.equal(year(r, 2026).status, 'open');
   close(year(r, 2026).T, 106);
   // 年中注资后：按到年末的天数计算
@@ -243,4 +243,13 @@ test('年末门槛线（不提成线）在年中就显示全年数值', () => {
   // 已结算时等于结算用的门槛线
   const r3 = compute(data(50, 100, [], [snap('2026-12-31', 165)]), { asOf: '2026-12-31' });
   close(r3.current.friend.TYearEnd, 106);
+});
+
+test('第一年首笔满额、之后注资按天数；第二年起期初高水位在季度预估中按已过天数折算', () => {
+  // 第一年 9 月 30 日：首笔 100 满额 106；7 月 2 日注资 20 按到 9 月 30 日的 90 天加权
+  const r = compute(data(50, 100, [flow('2026-07-02', 'friend', 'deposit', 20, 150)], [snap('2026-09-30', 175), snap('2026-12-31', 182), snap('2027-03-31', 190)]), { asOf: '2027-04-01' });
+  close(r.snapshots[0].friend.T, 106 + 20 * (1 + 0.06 * 90 / 365));
+  // 第二年 3 月 31 日：H_期初 按已过 90 天折算
+  const y1 = year(r, 2026);
+  close(r.snapshots[2].friend.T, y1.Hend * (1 + 0.06 * 90 / 365));
 });

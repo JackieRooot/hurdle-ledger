@@ -10,13 +10,14 @@
 //   某人持有价值 = 份数 × NAV。
 //
 // 朋友部分（h = 门槛 6%，s = 分成比例 25%，年天数固定 365）：
-//   已过天数 e = min(365, 计算日 − 上年 12 月 31 日)
+//   已过天数 e = min(365, 计算日 − 上年 12 月 31 日)；第一年（朋友首笔投入 B）e 固定为 365
 //   d_i       = 计算日 − 第 i 笔朋友资金流动日期
 //   门槛线 T  = H_期初 × (1 + h × e / 365)
 //             + Σ 朋友注资_i × (1 + h × d_i / 365)
 //             − Σ 朋友提取_j × (1 + h × d_j / 365)
 //   年末计算日 = 12 月 31 日，此时 e = 365（即全年 6%），d = 到年末的天数。
-//   第一年 H_期初 = B，也按全年计算（e 从当年 1 月 1 日起算，不从开户日起算）。
+//   第一年 H_期初 = B，按全年 6% 满额计算：年末结算和年中的季度预估都不按已过天数折算。
+//   之后的注资/提取仍按在账天数加权；第二年起的 H_期初 在季度预估中按已过天数折算。
 //   朋友价值 Vf = 朋友份数 × NAV
 //   分成 = max(0, Vf − T) × s（上限为 Vf）
 //   年末转移份数 = 分成 / 年末 NAV（朋友 → 我），NAV 与总值不变。
@@ -93,7 +94,7 @@ export function emptyData({ date, me, friend, names } = {}) {
 // ───── 门槛线 T（见文件头公式） ─────
 // ys：当年状态；date：计算日。
 function hurdleLine(ys, date, h) {
-  const e = Math.min(YEAR_DAYS, dayNum(date) - dayNum(`${ys.year - 1}-12-31`));
+  const e = ys.first ? YEAR_DAYS : Math.min(YEAR_DAYS, dayNum(date) - dayNum(`${ys.year - 1}-12-31`));
   let T = ys.H0 * (1 + h * e / YEAR_DAYS);
   for (const f of ys.hFlows) {
     const d = dayNum(date) - dayNum(f.date);
@@ -172,13 +173,13 @@ export function compute(data, opts = {}) {
 
   const firstYear = yearOf(inc.date);
   let ys = newYear(firstYear, {
-    startDate: inc.date, navStart: 1, H0: B, v0me: A, v0friend: B,
+    startDate: inc.date, navStart: 1, H0: B, v0me: A, v0friend: B, first: true,
   });
 
   function newYear(year, o) {
     return {
       year, startDate: o.startDate, navStart: o.navStart,
-      H0: o.H0, Hadj: o.H0, hFlows: [],
+      H0: o.H0, Hadj: o.H0, hFlows: [], first: !!o.first,
       v0: { me: o.v0me, friend: o.v0friend },
       flows: { me: [], friend: [] },
       settled: false, row: null, blockedBy, resetCount: 0,
