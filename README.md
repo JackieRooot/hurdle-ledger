@@ -34,7 +34,8 @@
 1. 登录 GitHub → 右上角头像 → **Settings** → 左侧最下面 **Developer settings** → **Personal access tokens** → **Fine-grained tokens** → **Generate new token**。
 2. Token name 随便填，例如 `hurdle-ledger`；Expiration 选一个期限（例如 1 年，到期后重新生成）。
 3. **Repository access** 选 **Only select repositories**，只勾选 `hurdle-ledger`。
-4. **Permissions → Repository permissions** 中，把 **Contents** 设为 **Read and write**，其他保持默认。
+4. 在 **Permissions** 中点 **Add permissions**（或展开 **Repository permissions**），在搜索框输入 **contents**（输入“repo”是搜不到的），勾选 **Contents**，再把它右边的权限从 **Read-only** 改成 **Read and write**。Metadata（只读）会被自动加上，其他保持默认。
+   如果列表里找不到 Contents，先回到第 3 步，确认选的是 **Only select repositories** 并且已经选中了 `hurdle-ledger`。
 5. 点 **Generate token**，复制以 `github_pat_` 开头的字符串，保存在你的密码管理器里。**不要把它发给朋友，也不要提交到仓库。**
 
 这个 token 只能读写这一个仓库的文件。编辑页只把它保存在页面内存中，关闭或锁定页面后就清除，下次编辑时重新粘贴。万一泄露，在同一页面点 **Revoke** 作废，再生成一个新的。
