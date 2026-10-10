@@ -219,7 +219,7 @@ try { localStorage.removeItem('hurdle-ledger.publish'); } catch { /* 忽略 */ }
 let autoPublish = true;
 let baseDataSha = null;       // 加载时 data.enc 的 git blob sha；null 表示仓库里应当还没有 data.enc
 let editVersion = 0;
-let publishing = false, publishTimer = null, lastPublished = null, publishError = null;
+let publishing = false, publishTimer = null, lastPublished = null, publishError = null, publishNote = null;
 
 for (const dlg of document.querySelectorAll('dialog')) {
   dlg.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => dlg.close()));
@@ -297,7 +297,7 @@ function enterEditor() {
   render();
 }
 
-function markDirty() { dirty = true; editVersion++; schedulePublish(); }
+function markDirty() { dirty = true; editVersion++; publishNote = null; schedulePublish(); }
 
 function render() {
   const S = compute(data).settings;
@@ -839,11 +839,17 @@ function schedulePublish() {
   updateStatus();
 }
 
-async function publish() {
+async function publish(manual = false) {
   clearTimeout(publishTimer);
   if (!data) return;
-  if (!gh) { $('pub-card').open = true; $('pub-card').scrollIntoView({ behavior: 'smooth' }); return; }
+  publishNote = null;
+  if (!gh) {
+    $('pub-card').open = true; $('pub-card').scrollIntoView({ behavior: 'smooth' });
+    setMsg($('pub-msg'), '请先填写 token 并点“连接”，之后就可以发布。', 'neg');
+    return;
+  }
   if (publishing) { publishTimer = setTimeout(publish, 1000); return; }
+  if (manual === true && !dirty && !publishError) { publishNote = '没有需要发布的修改，仓库里已是最新数据。'; updateStatus(); return; }
   if (compute(data).errors.length) { publishError = '数据中有错误，已暂停发布。请先修正。'; updateStatus(); return; }
   publishing = true; publishError = null; updateStatus();
   const version = editVersion;
@@ -870,7 +876,7 @@ async function publish() {
     if (dirty && !publishError) schedulePublish();
   }
 }
-$('btn-publish').addEventListener('click', publish);
+$('btn-publish').addEventListener('click', () => publish(true));
 
 function updateStatus() {
   const n = pendingShots.size;
@@ -883,14 +889,13 @@ function updateStatus() {
   else if (dirty) html = `<span class="neg">有未导出的修改${shotsNote}（连接 GitHub 后可自动发布）</span>`;
   else if (lastPublished) html = `<span class="pos">已发布 ${lastPublished.toLocaleTimeString('zh-CN')}，约 1～2 分钟后查看页自动更新</span>`;
   else html = '<span class="muted">没有未保存的修改</span>';
+  if (publishNote && !dirty && !publishing && !publishError) html = `<span class="muted">${esc(publishNote)}</span>`;
   $('status').innerHTML = html;
   $('pub-state').innerHTML = gh ? `<span class="pos">已连接 ${esc(gh.owner)}/${esc(gh.repo)}${autoPublish ? '（自动发布）' : '（手动发布）'}</span>` : '<span class="muted">未连接</span>';
-  // 发布按钮按状态显示：未连接 → “连接 GitHub”；有修改 → “立即发布”；正在发布 → 不可点；没有修改 → 隐藏
+  // 发布按钮始终显示、始终可点（只在发布进行中的几秒内不可点）
   const btn = $('btn-publish');
-  btn.classList.toggle('hidden', !!gh && !dirty && !publishing && !publishError);
   btn.disabled = publishing;
-  btn.textContent = !gh ? '连接 GitHub' : publishing ? '正在发布…' : publishError ? '重试发布' : '立即发布';
-  btn.title = !gh ? '连接后修改会自动提交到仓库' : autoPublish ? '不等待，马上发布当前修改' : '把当前修改提交到仓库';
+  btn.textContent = publishing ? '正在发布…' : '立即发布';
 }
 </script>
 </body>
