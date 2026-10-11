@@ -2,7 +2,7 @@
 // 测试数据单位均为“万元”，仅用于验算，不是真实数据。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compute } from '../calc.js';
+import { compute, normalizeData, newInvestorId } from '../calc.js';
 
 const close = (a, b, eps = 1e-4, msg) =>
   assert.ok(Math.abs(a - b) <= eps, `${msg || ''} 期望 ${b}，实际 ${a}`);
@@ -12,7 +12,11 @@ function data(A, B, flows = [], snapshots = [], date = '2026-01-01') {
 }
 const snap = (date, value) => ({ date, value });
 const flow = (date, owner, type, amount, valueBefore) => ({ date, owner, type, amount, valueBefore });
-const year = (r, y) => r.years.find((x) => x.year === y);
+// 年度行：把唯一出资人（旧格式中的“朋友”）的字段展开到顶层，方便断言
+const year = (r, y) => {
+  const row = r.years.find((x) => x.year === y);
+  return row && { ...row, ...row.inv.friend, fee: row.fee, transferUnits: row.transferUnits };
+};
 
 test('例 1：高水位线（A = 0）', () => {
   const r = compute(data(0, 100, [], [snap('2026-12-31', 90), snap('2027-12-31', 110)]), { asOf: '2027-12-31' });
@@ -42,8 +46,8 @@ test('例 3：两人共有', () => {
   close(r.current.me.fee, 1);
   assert.equal(r.current.me.feeKind, 'settled');
   close(r.current.cumulativeFee, 1);
-  close(r.current.friend.net, 9);
-  close(r.current.friend.netRate, 0.09);
+  close(r.current.inv.friend.net, 9);
+  close(r.current.inv.friend.netRate, 0.09);
   close(r.current.ytdReturn, 0.1);
 });
 
@@ -61,9 +65,9 @@ test('例 5：首笔投入在年中，门槛仍按全年 6%', () => {
   close(y.T, 106); close(y.fee, 1);
   // 季度预估：第一年首笔投入始终按全年 6% 满额，不按已过天数折算
   const q3 = r.snapshots[0];
-  close(q3.friend.T, 106);
-  assert.equal(q3.friend.feeKind, 'estimate');
-  close(q3.friend.fee, 0);
+  close(q3.inv.friend.T, 106);
+  assert.equal(q3.inv.friend.feeKind, 'estimate');
+  close(q3.inv.friend.fee, 0);
   // 年中季度预估不转移份额
   close(q3.units.friend, 100);
 });
@@ -131,7 +135,7 @@ test('跨年结转：上年年末值自动作为下一年期初', () => {
   const r = compute(data(50, 100, [], [snap('2026-12-31', 165), snap('2027-06-30', 170), snap('2027-12-31', 181.5)]), { asOf: '2027-12-31' });
   const y1 = year(r, 2026), y2 = year(r, 2027);
   const fu = 100 - 1 / 1.1;
-  close(y2.friendStart, 109); close(y2.H0, 109);
+  close(y2.start, 109); close(y2.H0, 109);
   close(y2.Vf, fu * 1.21);
   close(y2.T, 109 * 1.06);
   close(y2.fee, (fu * 1.21 - 109 * 1.06) * 0.25);
@@ -180,7 +184,7 @@ test('缺少年末快照时提示无法结算，之后年份也无法计算', ()
   // 净值、份数、价值照常
   close(r.current.nav, 1.2);
   close(r.current.values.friend, 120);
-  assert.equal(r.current.friend.fee, null);
+  assert.equal(r.current.inv.friend.fee, null);
   assert.equal(r.cumulativeFee, 0);
   // 只有一年数据，但日期已到下一年
   const r2 = compute(data(50, 100, [], [snap('2026-09-30', 160)]), { asOf: '2027-02-01' });
@@ -226,30 +230,117 @@ test('朋友到手收益率按资金在账天数加权', () => {
   const y = year(r, 2026);
   const net = y.Vf - y.fee - 100 - 20;
   const base = 100 + 20 * 182 / 364; // 第一年区间起点 = 开户日 1 月 1 日
-  close(r.current.friend.net, net);
-  close(r.current.friend.netRate, net / base);
+  close(r.current.inv.friend.net, net);
+  close(r.current.inv.friend.netRate, net / base);
 });
 
 test('年末门槛线（不提成线）在年中就显示全年数值', () => {
   // 例 5 的数据：9 月 30 日时年末门槛线应为 106
   const r = compute(data(50, 100, [], [snap('2026-09-30', 157.5)], '2026-07-01'), { asOf: '2026-10-10' });
-  close(r.current.friend.TYearEnd, 106);
-  close(r.current.friend.T, 106); // 第一年首笔不折算
+  close(r.current.inv.friend.TYearEnd, 106);
+  close(r.current.inv.friend.T, 106); // 第一年首笔不折算
   assert.equal(year(r, 2026).status, 'open');
   close(year(r, 2026).T, 106);
   // 年中注资后：按到年末的天数计算
   const r2 = compute(data(50, 100, [flow('2026-07-02', 'friend', 'deposit', 20, 150)], [snap('2026-09-30', 175)]), { asOf: '2026-10-10' });
-  close(r2.current.friend.TYearEnd, 126.5984);
+  close(r2.current.inv.friend.TYearEnd, 126.5984);
   // 已结算时等于结算用的门槛线
   const r3 = compute(data(50, 100, [], [snap('2026-12-31', 165)]), { asOf: '2026-12-31' });
-  close(r3.current.friend.TYearEnd, 106);
+  close(r3.current.inv.friend.TYearEnd, 106);
 });
 
 test('第一年首笔满额、之后注资按天数；第二年起期初高水位在季度预估中按已过天数折算', () => {
   // 第一年 9 月 30 日：首笔 100 满额 106；7 月 2 日注资 20 按到 9 月 30 日的 90 天加权
   const r = compute(data(50, 100, [flow('2026-07-02', 'friend', 'deposit', 20, 150)], [snap('2026-09-30', 175), snap('2026-12-31', 182), snap('2027-03-31', 190)]), { asOf: '2027-04-01' });
-  close(r.snapshots[0].friend.T, 106 + 20 * (1 + 0.06 * 90 / 365));
+  close(r.snapshots[0].inv.friend.T, 106 + 20 * (1 + 0.06 * 90 / 365));
   // 第二年 3 月 31 日：H_期初 按已过 90 天折算
   const y1 = year(r, 2026);
-  close(r.snapshots[2].friend.T, y1.Hend * (1 + 0.06 * 90 / 365));
+  close(r.snapshots[2].inv.friend.T, y1.Hend * (1 + 0.06 * 90 / 365));
+});
+
+// ───── 多位出资人 ─────
+function multi(A, investors, flows = [], snapshots = [], date = '2026-01-01') {
+  return { version: 2, settings: {}, inception: { date, me: A }, investors, flows, snapshots };
+}
+const yi = (r, y, id) => r.years.find((x) => x.year === y).inv[id];
+
+test('多人：两位开户出资人各自结算，可单独设置门槛和分成', () => {
+  const r = compute(multi(50, [
+    { id: 'friend', name: '甲', initial: 100 },
+    { id: 'f2', name: '乙', initial: 100, hurdle: 0.08, share: 0.2 },
+  ], [], [snap('2026-12-31', 275)]), { asOf: '2026-12-31' });
+  assert.deepEqual(r.errors, []);
+  const a = yi(r, 2026, 'friend'), b = yi(r, 2026, 'f2');
+  close(a.Vf, 110); close(a.T, 106); close(a.fee, 1);
+  close(b.Vf, 110); close(b.T, 108); close(b.fee, 0.4);
+  const y = r.years.find((x) => x.year === 2026);
+  close(y.fee, 1.4); close(y.transferUnits, 1.4 / 1.1);
+  close(r.current.values.friend, 109); close(r.current.values.f2, 109.6);
+  close(r.current.values.me, 56.4);
+  close(r.current.me.fee, 1.4); close(r.cumulativeFee, 1.4);
+  close(r.current.share.me + r.current.share.friend + r.current.share.f2, 1);
+  assert.equal(r.investors[0].custom.hurdle, false);
+  assert.equal(r.investors[1].custom.share, true);
+});
+
+test('多人：中途加入的出资人按在账天数折算门槛，不影响其他人', () => {
+  const r = compute(multi(50, [
+    { id: 'friend', name: '甲', initial: 100 },
+    { id: 'f2', name: '乙', initial: 0 },
+  ], [flow('2026-07-02', 'f2', 'deposit', 20, 150)], [snap('2026-12-31', 182), snap('2027-12-31', 200.2)]), { asOf: '2027-12-31' });
+  assert.deepEqual(r.errors, []);
+  close(r.flows[0].nav, 1); close(r.flows[0].units, 20);
+  const nav = 182 / 170;
+  const a = yi(r, 2026, 'friend'), b = yi(r, 2026, 'f2');
+  // 开户出资人仍按全年满额
+  close(a.T, 106); close(a.fee, (100 * nav - 106) * 0.25);
+  // 中途加入：期初高水位 0，注资按 182 天加权
+  close(b.H0, 0); close(b.start, 0);
+  close(b.T, 20 * (1 + 0.06 * 182 / 365)); close(b.fee, (20 * nav - b.T) * 0.25);
+  close(b.Hend, Math.max(20, b.Vf - b.fee));
+  // 第二年按上年年末高水位继续
+  const b2 = yi(r, 2027, 'f2');
+  close(b2.H0, b.Hend); close(b2.start, b.Vf - b.fee);
+  // 季度预估：加入前不产生任何数值
+  const empty = compute(multi(50, [{ id: 'friend', name: '甲', initial: 100 }, { id: 'f2', name: '乙' }], [], [snap('2026-06-30', 160)]), { asOf: '2026-07-01' });
+  close(empty.current.inv.f2.value, 0); close(empty.current.inv.f2.fee, 0);
+  close(empty.current.inv.friend.fee, (160 * 100 / 150 - 106) * 0.25);
+});
+
+test('多人：提取限制使用本人的门槛和分成比例', () => {
+  // 7 月 2 日净值 1.5；乙门槛 10%、分成 50%，第一年满额 T = 110
+  const inv = [{ id: 'friend', name: '甲', initial: 100 }, { id: 'f2', name: '乙', initial: 100, hurdle: 0.1, share: 0.5 }];
+  const est = (150 - 110) * 0.5;
+  const bad = compute(multi(50, inv, [flow('2026-07-02', 'f2', 'withdraw', 150 - est + 1, 375)]), { asOf: '2026-07-02' });
+  assert.equal(bad.errors.length, 1);
+  assert.match(bad.errors[0].msg, /超过可提取金额/);
+  const ok = compute(multi(50, inv, [flow('2026-07-02', 'f2', 'withdraw', 150 - est, 375)]), { asOf: '2026-07-02' });
+  assert.deepEqual(ok.errors, []);
+});
+
+test('多人：出资人数据校验', () => {
+  const dup = compute(multi(50, [{ id: 'friend', initial: 100 }, { id: 'friend', initial: 1 }]));
+  assert.ok(dup.errors.some((e) => e.where === 'investor' && /重复/.test(e.msg)));
+  const rate = compute(multi(50, [{ id: 'friend', initial: 100, hurdle: 1.5 }, { id: 'f2', share: -0.1 }]));
+  assert.equal(rate.errors.filter((e) => e.where === 'investor').length, 2);
+  const owner = compute(multi(50, [{ id: 'friend', initial: 100 }], [flow('2026-07-02', 'f9', 'deposit', 1, 150)]), { asOf: '2026-07-02' });
+  assert.equal(owner.errors.length, 1);
+  assert.match(owner.errors[0].msg, /已登记的出资人/);
+  // 只有管理人、出资人都还没加入也可以
+  const solo = compute(multi(50, [{ id: 'f2', name: '乙' }], [], [snap('2026-12-31', 55)]), { asOf: '2026-12-31' });
+  assert.deepEqual(solo.errors, []);
+  close(solo.current.values.me, 55);
+});
+
+test('旧格式自动转换为多人格式', () => {
+  const old = { settings: { names: { me: '我', friend: '小王' } }, inception: { date: '2026-01-01', me: 50, friend: 100 }, flows: [flow('2026-07-02', 'friend', 'deposit', 20, 150)], snapshots: [] };
+  const d = normalizeData(old);
+  assert.equal(d.version, 2);
+  assert.deepEqual(d.inception, { date: '2026-01-01', me: 50 });
+  assert.deepEqual(d.settings.names, { me: '我' });
+  assert.deepEqual(d.investors, [{ id: 'friend', name: '小王', initial: 100 }]);
+  assert.equal(d.flows[0].owner, 'friend');
+  assert.equal(normalizeData(d), d);
+  assert.equal(newInvestorId(d), 'f2');
+  assert.equal(newInvestorId({ investors: [{ id: 'friend' }, { id: 'f2' }] }), 'f3');
 });
