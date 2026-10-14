@@ -133,6 +133,11 @@ window.addEventListener('error', function (e) {
         <label class="field"><span>账户总值（元，当天所有资金流动之后）</span><input id="sn-value" type="number" step="0.01" min="0" inputmode="decimal" required></label>
         <label class="field"><span>截图（可选，可 Ctrl+V 粘贴）</span><input id="sn-file" type="file" accept="image/*"></label>
       </div>
+      <div id="sn-preview" class="shot-preview hidden">
+        <img id="sn-preview-img" alt="待保存的截图" title="点击查看大图">
+        <div class="small muted" id="sn-preview-info"></div>
+        <button type="button" id="sn-preview-remove">移除截图</button>
+      </div>
       <label class="field" style="margin-top:10px"><span>备注</span><input id="sn-note"></label>
       <div class="live" id="sn-live"></div>
       <div class="row form-actions">
@@ -408,6 +413,7 @@ function resetSnapForm() {
   $('sn-submit').textContent = '新增';
   $('sn-cancel').classList.add('hidden');
   $('sn-live').textContent = '';
+  updateShotPreview();
 }
 $('sn-cancel').addEventListener('click', () => { resetSnapForm(); setMsg($('snap-msg'), '', 'muted'); });
 
@@ -420,7 +426,32 @@ document.addEventListener('paste', (e) => {
   const dt = new DataTransfer();
   dt.items.add(file);
   $('sn-file').files = dt.files;
+  updateShotPreview();
   setMsg($('snap-msg'), `已粘贴截图（${esc(file.type)}，${Math.round(file.size / 1024)} KB），点击“${esc($('sn-submit').textContent)}”保存。`, 'muted');
+});
+
+// 已选择或粘贴、尚未保存的截图：显示预览，可移除
+let previewUrl = null;
+function updateShotPreview() {
+  if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
+  const file = $('sn-file').files[0];
+  $('sn-preview').classList.toggle('hidden', !file);
+  if (!file) { $('sn-preview-img').removeAttribute('src'); return; }
+  previewUrl = URL.createObjectURL(file);
+  $('sn-preview-img').src = previewUrl;
+  $('sn-preview-info').textContent = `${file.name}，${Math.round(file.size / 1024)} KB，尚未保存`;
+}
+$('sn-file').addEventListener('change', updateShotPreview);
+$('sn-preview-remove').addEventListener('click', () => {
+  $('sn-file').value = '';
+  updateShotPreview();
+  setMsg($('snap-msg'), '已移除截图。', 'muted');
+});
+$('sn-preview-img').addEventListener('click', () => {
+  if (!previewUrl) return;
+  $('shot-title').textContent = '待保存的截图';
+  $('shot-body').innerHTML = `<img alt="截图" src="${previewUrl}">`;
+  $('shot-dlg').showModal();
 });
 
 function shotName(period, date, idx) {
@@ -571,6 +602,7 @@ $('snap-list').addEventListener('click', (e) => {
     editSnap = i; periodTouched = true;
     $('sn-date').value = s.date; $('sn-period').value = s.period || ''; $('sn-value').value = s.value; $('sn-note').value = s.note || '';
     $('sn-file').value = '';
+    updateShotPreview();
     $('snap-form-title').textContent = `编辑快照 ${s.date}${s.shot ? '（重新选择截图将替换原截图）' : ''}`;
     $('sn-submit').textContent = '保存修改';
     $('sn-cancel').classList.remove('hidden');
