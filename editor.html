@@ -131,7 +131,7 @@ window.addEventListener('error', function (e) {
         <label class="field"><span>日期</span><input id="sn-date" type="date" required></label>
         <label class="field"><span>期间</span><input id="sn-period" placeholder="如 2026Q3" required></label>
         <label class="field"><span>账户总值（元，当天所有资金流动之后）</span><input id="sn-value" type="number" step="0.01" min="0" inputmode="decimal" required></label>
-        <label class="field"><span>截图（可选）</span><input id="sn-file" type="file" accept="image/*"></label>
+        <label class="field"><span>截图（可选，可 Ctrl+V 粘贴）</span><input id="sn-file" type="file" accept="image/*"></label>
       </div>
       <label class="field" style="margin-top:10px"><span>备注</span><input id="sn-note"></label>
       <div class="live" id="sn-live"></div>
@@ -410,6 +410,18 @@ function resetSnapForm() {
   $('sn-live').textContent = '';
 }
 $('sn-cancel').addEventListener('click', () => { resetSnapForm(); setMsg($('snap-msg'), '', 'muted'); });
+
+// 在编辑页任意位置 Ctrl+V 粘贴图片，作为快照截图
+document.addEventListener('paste', (e) => {
+  if ($('edit').classList.contains('hidden')) return;
+  const file = [...(e.clipboardData?.files || [])].find((f) => f.type.startsWith('image/'));
+  if (!file) return;
+  e.preventDefault();
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  $('sn-file').files = dt.files;
+  setMsg($('snap-msg'), `已粘贴截图（${esc(file.type)}，${Math.round(file.size / 1024)} KB），点击“${esc($('sn-submit').textContent)}”保存。`, 'muted');
+});
 
 function shotName(period, date, idx) {
   const safe = (s) => String(s).replace(/[^0-9A-Za-z_-]/g, '');
