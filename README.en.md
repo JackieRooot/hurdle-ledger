@@ -16,6 +16,7 @@ A fully static website, hosted on GitHub Pages, that tracks the returns and perf
 | `crypto.js` | Encryption / decryption |
 | `github.js` | Commits directly from the editor to the repo (auto-publish) |
 | `view.js`, `style.css`, `zip.js` | Rendering, styles, manual-export zip |
+| `ocr.js`, `vendor/` | Reads the total assets from a screenshot (local copy of Tesseract.js, loaded only when you pick a screenshot in the editor) |
 | `data.enc` | All text records, encrypted (created by the editor the first time) |
 | `shots/` | Encrypted screenshots, one file each |
 | `tests/` | Node unit tests (fictional test data only) |
@@ -79,6 +80,12 @@ An older `data.enc` (from the single-friend version) is converted automatically 
    - **期间** (Period): filled in automatically from the date (e.g. `2026Q3`); usually no need to change it.
    - **账户总值** (Account value): total account assets after that day's close, already including all of that day's deposits and withdrawals.
    - **截图** (Screenshot): choose the asset screenshot from your brokerage app. It is compressed and encrypted automatically.
+     Once you pick it, the editor **reads the total assets from the screenshot and fills in the account value** (a few seconds; the first time it downloads about 12 MB of recognition files). Recognition runs entirely in the browser, and the screenshot is never sent to any server. The result is checked against "stocks + wealth products + cash = total assets" and shown below the form:
+     - ✓ means it matches the itemized amounts; on ⚠, compare the amount with the screenshot.
+     - If the screenshot was taken during the broker's clearing time, it warns that the figures may be inaccurate; it's better to take the screenshot after clearing.
+     - If the app hid the amounts (\*\*\*\*) or no total is found, nothing is filled in; enter it by hand.
+     - If you edit the account value while recognition is running, your value is kept; click **改用识别值** (Use recognized value) to switch.
+     - You can also fill in the account value first and pick the screenshot afterwards: the recognized value replaces it, and the old value is shown.
 3. Click **新增** (Add). The **计算结果预览** (Results preview) below updates immediately; check that the NAV, each person's value, the hurdle lines and the estimated fees look right. A December 31 snapshot triggers the year-end settlement automatically: each investor is settled separately, and the units corresponding to their fee are moved from them to the manager.
 4. About 2 seconds after saving, the data is encrypted and committed to the repository (the status at the top shows "已发布" / Published), together with the screenshot. The viewer updates after roughly 1–2 minutes.
 
