@@ -6,15 +6,15 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <title>账本编辑</title>
-<link rel="stylesheet" href="style.css?v=20261010-1">
+<link rel="stylesheet" href="style.css?v=20261011-1">
 <!-- 版本号：每次修改 js/css 时一起改（index.html 和 editor.html 保持一致），让浏览器不会混用新旧文件 -->
 <script type="importmap">
 { "imports": {
-  "./calc.js": "./calc.js?v=20261010-1",
-  "./crypto.js": "./crypto.js?v=20261010-1",
-  "./view.js": "./view.js?v=20261010-1",
-  "./github.js": "./github.js?v=20261010-1",
-  "./zip.js": "./zip.js?v=20261010-1"
+  "./calc.js": "./calc.js?v=20261011-1",
+  "./crypto.js": "./crypto.js?v=20261011-1",
+  "./view.js": "./view.js?v=20261011-1",
+  "./github.js": "./github.js?v=20261011-1",
+  "./zip.js": "./zip.js?v=20261011-1"
 } }
 </script>
 <script>
@@ -54,14 +54,14 @@ window.addEventListener('error', function (e) {
       <h3>新建数据集</h3>
       <div class="form-grid">
         <label class="field"><span>管理人名称</span><input id="n-me" value="我" required></label>
-        <label class="field"><span>出资人名称</span><input id="n-friend" value="朋友" required></label>
+        <label class="field"><span>第一位出资人名称</span><input id="n-friend" value="朋友" required></label>
         <label class="field"><span>首笔资金日期</span><input id="n-date" type="date" required></label>
         <label class="field"><span>管理人首笔投入 A（元）</span><input id="n-a" type="number" step="0.01" min="0.01" inputmode="decimal" required></label>
         <label class="field"><span>出资人首笔投入 B（元）</span><input id="n-b" type="number" step="0.01" min="0.01" inputmode="decimal" required></label>
         <label class="field"><span>设置密码</span><input id="n-pw" type="password" class="pw" name="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" required minlength="8"></label>
         <label class="field"><span>再次输入密码</span><input id="n-pw2" type="password" class="pw" name="password-confirm" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" required minlength="8"></label>
       </div>
-      <p class="small muted">门槛 6%，分成 25%。密码至少 8 位，请使用足够长、不易猜到的密码（仓库是公开的，任何人都能下载密文尝试破解）。忘记密码将无法恢复数据。</p>
+      <p class="small muted">默认门槛 6%，分成 25%（之后可以为每位出资人单独设置）。以后有新朋友加入，在编辑页的“出资人”中添加即可。密码至少 8 位，请使用足够长、不易猜到的密码（仓库是公开的，任何人都能下载密文尝试破解）。忘记密码将无法恢复数据。</p>
       <button class="primary" type="submit">创建</button>
       <div class="msg" id="new-msg"></div>
     </form>
@@ -114,15 +114,34 @@ window.addEventListener('error', function (e) {
     <form method="post" onsubmit="return false" id="set-form" class="card" autocomplete="off">
       <div class="form-grid">
         <label class="field"><span>管理人名称</span><input id="s-me" required></label>
-        <label class="field"><span>出资人名称</span><input id="s-friend" required></label>
         <label class="field"><span>首笔资金日期</span><input id="s-date" type="date" required></label>
         <label class="field"><span>管理人首笔 A（元）</span><input id="s-a" type="number" step="0.01" min="0.01" inputmode="decimal" required></label>
-        <label class="field"><span>出资人首笔 B（元）</span><input id="s-b" type="number" step="0.01" min="0.01" inputmode="decimal" required></label>
       </div>
       <p class="small muted" id="s-rates"></p>
       <button type="submit">保存设置</button>
       <div class="msg" id="set-msg"></div>
     </form>
+
+    <h2>出资人</h2>
+    <form method="post" onsubmit="return false" id="inv-form" class="card" autocomplete="off">
+      <h3 id="inv-form-title">添加出资人</h3>
+      <div class="form-grid">
+        <label class="field"><span>名称（昵称即可）</span><input id="iv-name" required></label>
+        <label class="field"><span>开户时投入（元，中途加入填 0）</span><input id="iv-initial" type="number" step="0.01" min="0" inputmode="decimal" value="0"></label>
+        <label class="field"><span>门槛收益率（%，留空 = 默认）</span><input id="iv-hurdle" type="number" step="0.01" min="0" max="99.99" inputmode="decimal"></label>
+        <label class="field"><span>分成比例（%，留空 = 默认）</span><input id="iv-share" type="number" step="0.01" min="0" max="100" inputmode="decimal"></label>
+      </div>
+      <p class="small muted" id="iv-help"></p>
+      <div class="row form-actions">
+        <button class="primary" type="submit" id="iv-submit">添加</button>
+        <button type="button" id="iv-cancel" class="hidden">取消编辑</button>
+      </div>
+      <div class="msg" id="inv-msg"></div>
+    </form>
+    <div class="table-wrap" style="margin-top:12px"><table>
+      <thead><tr><th class="left">名称</th><th>开户时投入</th><th>门槛</th><th>分成</th><th>资金流动</th><th>当前份数</th><th class="left">操作</th></tr></thead>
+      <tbody id="inv-list"></tbody>
+    </table></div>
 
     <h2>季度快照</h2>
     <form method="post" onsubmit="return false" id="snap-form" class="card" autocomplete="off">
@@ -156,7 +175,7 @@ window.addEventListener('error', function (e) {
       <h3 id="flow-form-title">新增资金流动</h3>
       <div class="form-grid">
         <label class="field"><span>日期</span><input id="fl-date" type="date" required></label>
-        <label class="field"><span>谁</span><select id="fl-owner"><option value="friend"></option><option value="me"></option></select></label>
+        <label class="field"><span>谁</span><select id="fl-owner"></select></label>
         <label class="field"><span>类型</span><select id="fl-type"><option value="deposit">注资</option><option value="withdraw">提取</option></select></label>
         <label class="field"><span>金额（元）</span><input id="fl-amount" type="number" step="0.01" min="0.01" inputmode="decimal" required></label>
         <label class="field"><span>当时账户总值（元，这笔资金进出前一刻）</span><input id="fl-vb" type="number" step="0.01" min="0.01" inputmode="decimal" required></label>
@@ -173,7 +192,7 @@ window.addEventListener('error', function (e) {
       <thead><tr><th>日期</th><th class="left">谁</th><th class="left">类型</th><th>金额</th><th>当时总值</th><th>当时净值</th><th>份数</th><th class="left">备注</th><th class="left" data-nosort>操作</th></tr></thead>
       <tbody id="flow-list"></tbody>
     </table></div>
-    <p class="small muted">同一天的多笔资金流动按列表中的先后顺序计算，每笔使用自己的“当时账户总值”。</p>
+    <p class="small muted">新朋友中途加入：先在“出资人”中添加（开户时投入填 0），再在这里记录他的第一笔注资。同一天的多笔资金流动按列表中的先后顺序计算，每笔使用自己的“当时账户总值”。</p>
 
     <div class="preview-head"><h2>计算结果预览</h2><span class="small muted">这就是查看页导出后显示的内容</span></div>
     <div id="preview"></div>
@@ -220,9 +239,9 @@ window.addEventListener('error', function (e) {
 </dialog>
 
 <script type="module">
-import { compute, emptyData, quarterOf, isValidDate, dayNum, isYearEnd, todayStr } from './calc.js';
+import { compute, emptyData, normalizeData, newInvestorId, quarterOf, isValidDate, dayNum, isYearEnd, todayStr } from './calc.js';
 import { encryptJSON, decryptJSON, encryptBytes, decryptBytes, imageMime, WrongPasswordError } from './crypto.js';
-import { renderDashboard, money, units, navf, esc, describeWhere, setupPasswordFields, makeSortable } from './view.js';
+import { renderDashboard, money, units, navf, pct, esc, describeWhere, setupPasswordFields, makeSortable, people } from './view.js';
 import { makeZip } from './zip.js';
 import { GitHubRepo, detectRepo, gitBlobSha } from './github.js';
 
@@ -236,7 +255,7 @@ let dirty = false;
 let pendingShots = new Map();  // 文件名 → 加密后的字节（待导出）
 const localUrls = new Map();   // 文件名 → 本地预览 URL
 let removedShots = new Set();  // 已删除、需要从仓库中删除的截图
-let editSnap = null, editFlow = null;
+let editSnap = null, editFlow = null, editInv = null;
 // 发布状态（全部只在内存中）
 let gh = null;                // GitHubRepo，含 token
 // 清除旧版本曾保存在浏览器存储里的 token（现在 token 只放在内存中）
@@ -282,10 +301,12 @@ async function loadFrom(getBytes, fromFile = false) {
   setMsg(msg, '正在下载并解密……', 'muted');
   try {
     const buf = new Uint8Array(await getBytes());
-    const d = await decryptJSON(pw, buf);
+    const d0 = await decryptJSON(pw, buf);
     // 从本地文件加载时，仓库里可能还没有上传这个文件：允许仓库中“没有 data.enc”或“正是这个文件”
     baseDataSha = fromFile ? [await gitBlobSha(buf), null] : await gitBlobSha(buf);
-    if (!d || !d.inception) throw new Error('文件内容不是有效的账本数据。');
+    if (!d0 || !d0.inception) throw new Error('文件内容不是有效的账本数据。');
+    // 旧格式（只有一位朋友）自动转换为多人格式，下次发布时以新格式保存
+    const d = normalizeData(d0);
     d.flows = d.flows || []; d.snapshots = d.snapshots || [];
     sortData(d);
     password = pw; data = d; dirty = false;
@@ -317,6 +338,7 @@ function enterEditor() {
   $('edit').classList.remove('hidden');
   fillSettings();
   fillPublish();
+  resetInvForm();
   resetSnapForm();
   resetFlowForm();
   render();
@@ -325,11 +347,9 @@ function enterEditor() {
 function markDirty() { dirty = true; editVersion++; publishNote = null; schedulePublish(); }
 
 function render() {
-  const S = compute(data).settings;
-  $('fl-owner').options[0].textContent = S.names.friend + '（出资人）';
-  $('fl-owner').options[1].textContent = S.names.me + '（管理人）';
-  updateStatus();
   const res = compute(data);
+  fillOwnerOptions(res);
+  updateStatus();
   renderLists(res);
   renderDashboard($('preview'), data, res, { onShot });
 }
@@ -362,23 +382,111 @@ function sortData(d) {
 function fillSettings() {
   const S = compute(data).settings;
   $('s-me').value = S.names.me;
-  $('s-friend').value = S.names.friend;
   $('s-date').value = data.inception.date;
   $('s-a').value = data.inception.me;
-  $('s-b').value = data.inception.friend;
-  $('s-rates').textContent = `门槛收益 ${(S.hurdle * 100).toFixed(2)}%，分成比例 ${(S.share * 100).toFixed(2)}%（固定，不在此修改）。`;
+  $('s-rates').textContent = `默认门槛收益 ${(S.hurdle * 100).toFixed(2)}%，默认分成比例 ${(S.share * 100).toFixed(2)}%。可以在下方“出资人”中为某位出资人单独设置。`;
 }
 $('set-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const msg = $('set-msg');
-  const A = num($('s-a').value), B = num($('s-b').value), date = $('s-date').value;
-  if (!(A > 0) || !(B > 0)) return setMsg(msg, 'A 和 B 都必须大于 0。');
+  const A = num($('s-a').value), date = $('s-date').value;
+  if (!(A > 0)) return setMsg(msg, 'A 必须大于 0。');
   if (!isValidDate(date)) return setMsg(msg, '日期无效。');
   const ok = tryApply((d) => {
-    d.settings.names = { me: $('s-me').value.trim() || '我', friend: $('s-friend').value.trim() || '朋友' };
-    d.inception = { date, me: A, friend: B };
+    d.settings.names = { ...(d.settings.names || {}), me: $('s-me').value.trim() || '我' };
+    d.inception = { ...d.inception, date, me: A };
   }, msg);
   if (ok) setMsg(msg, '已保存（尚未导出）。', 'muted');
+});
+
+// ───── 出资人 ─────
+const ownerLabel = (res, id) => (id === 'me' ? res.settings.names.me : (res.investors.find((v) => v.id === id) || {}).name || id);
+
+function fillOwnerOptions(res) {
+  const sel = $('fl-owner'), keep = sel.value;
+  sel.innerHTML = people(res).map((p) => `<option value="${esc(p.id)}">${esc(p.name)}（${p.role}）</option>`).join('');
+  if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
+}
+
+// 百分比输入框 → 小数；留空表示使用默认值
+function rateInput(id) {
+  const v = $(id).value.trim();
+  return v === '' ? null : Number(v) / 100;
+}
+
+function resetInvForm() {
+  editInv = null;
+  $('inv-form').reset();
+  $('iv-initial').value = '0';
+  const S = compute(data).settings;
+  $('iv-hurdle').placeholder = `默认 ${(S.hurdle * 100).toFixed(2)}`;
+  $('iv-share').placeholder = `默认 ${(S.share * 100).toFixed(2)}`;
+  $('iv-help').textContent = `中途加入的朋友：“开户时投入”填 0，添加后在“资金流动”中记录他的第一笔注资（门槛按在账天数折算）。只有开户当天就投入的人才填“开户时投入”。修改比例会重新计算所有年份。`;
+  $('inv-form-title').textContent = '添加出资人';
+  $('iv-submit').textContent = '添加';
+  $('iv-cancel').classList.add('hidden');
+}
+$('iv-cancel').addEventListener('click', () => { resetInvForm(); setMsg($('inv-msg'), '', 'muted'); });
+
+$('inv-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const msg = $('inv-msg');
+  const name = $('iv-name').value.trim();
+  const initial = num($('iv-initial').value === '' ? '0' : $('iv-initial').value);
+  const hurdle = rateInput('iv-hurdle'), share = rateInput('iv-share');
+  if (!name) return setMsg(msg, '请填写名称。');
+  if (data.investors.some((v, i) => i !== editInv && v.name === name) || name === compute(data).settings.names.me) return setMsg(msg, '名称和其他人重复了，请换一个。');
+  if (!(initial >= 0)) return setMsg(msg, '开户时投入不能小于 0。');
+  if (hurdle != null && !(hurdle >= 0 && hurdle < 1)) return setMsg(msg, '门槛收益率应在 0 到 99.99 之间。');
+  if (share != null && !(share >= 0 && share <= 1)) return setMsg(msg, '分成比例应在 0 到 100 之间。');
+  const idx = editInv;
+  const ok = tryApply((d) => {
+    const old = idx != null ? d.investors[idx] : { id: newInvestorId(d) };
+    const rec = { id: old.id, name, initial };
+    if (hurdle != null) rec.hurdle = hurdle;
+    if (share != null) rec.share = share;
+    if (idx != null) d.investors[idx] = rec; else d.investors.push(rec);
+  }, msg);
+  if (!ok) return;
+  resetInvForm();
+  setMsg(msg, `已${idx != null ? '更新' : '添加'}出资人 ${esc(name)}。`, 'muted');
+});
+
+function renderInvestors(res) {
+  const counts = new Map();
+  for (const f of data.flows) counts.set(f.owner, (counts.get(f.owner) || 0) + 1);
+  const rows = res.investors.map((v) => `<tr><td class="left">${esc(v.name)}</td><td>${money(v.initial)}</td>
+    <td>${pct(v.hurdle)}${v.custom.hurdle ? '' : ' <span class="muted small">默认</span>'}</td>
+    <td>${pct(v.share)}${v.custom.share ? '' : ' <span class="muted small">默认</span>'}</td>
+    <td>${counts.get(v.id) || 0} 笔</td><td>${res.current ? units(res.current.units[v.id]) : '—'}</td>
+    <td class="actions left"><button type="button" data-ei="${v.index}">编辑</button> <button type="button" class="danger" data-di="${v.index}">删除</button></td></tr>`);
+  $('inv-list').innerHTML = rows.length ? rows.join('') : '<tr><td colspan="7" class="left muted">暂无</td></tr>';
+}
+
+$('inv-list').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.ei != null) {
+    const i = +b.dataset.ei, v = data.investors[i];
+    editInv = i;
+    $('iv-name').value = v.name || '';
+    $('iv-initial').value = v.initial ?? 0;
+    $('iv-hurdle').value = v.hurdle == null || v.hurdle === '' ? '' : +(v.hurdle * 100).toFixed(4);
+    $('iv-share').value = v.share == null || v.share === '' ? '' : +(v.share * 100).toFixed(4);
+    $('inv-form-title').textContent = `编辑出资人 ${v.name || ''}`;
+    $('iv-submit').textContent = '保存修改';
+    $('iv-cancel').classList.remove('hidden');
+    $('inv-form').scrollIntoView({ behavior: 'smooth' });
+  }
+  if (b.dataset.di != null) {
+    const i = +b.dataset.di, v = data.investors[i];
+    const n = data.flows.filter((f) => f.owner === v.id).length;
+    if (n) return setMsg($('inv-msg'), `${esc(v.name)} 还有 ${n} 笔资金流动，请先删除这些记录再删除出资人。`);
+    if (!confirm(`确定删除出资人 ${v.name} 吗？`)) return;
+    if (tryApply((d) => { d.investors.splice(i, 1); }, $('inv-msg'))) {
+      if (editInv === i) resetInvForm(); else if (editInv != null && editInv > i) editInv--;
+      setMsg($('inv-msg'), `已删除出资人 ${esc(v.name)}。`, 'muted');
+    }
+  }
 });
 
 // ───── 季度快照 ─────
@@ -397,10 +505,11 @@ function snapLive() {
   const cand = structuredClone(data);
   const rec = { date, period: $('sn-period').value, value };
   if (editSnap != null) cand.snapshots[editSnap] = { ...cand.snapshots[editSnap], ...rec }; else cand.snapshots.push(rec);
-  const r = compute(cand).snapshots.find((x) => x.date === date && !x.error);
+  const res = compute(cand);
+  const r = res.snapshots.find((x) => x.date === date && !x.error);
   if (!r) { el.textContent = ''; return; }
-  el.innerHTML = `对应净值 <b>${navf(r.nav)}</b>；${esc(data.settings.names?.friend || '朋友')}价值 ${money(r.values.friend)}，${esc(data.settings.names?.me || '我')}价值 ${money(r.values.me)}`
-    + (r.friend.fee != null ? `；${r.friend.feeKind === 'settled' ? '年末结算分成' : '预估分成'} ${money(r.friend.fee)}` : '')
+  el.innerHTML = `对应净值 <b>${navf(r.nav)}</b>；` + people(res).map((p) => `${esc(p.name)}价值 ${money(r.values[p.id])}`).join('，')
+    + (r.fee != null ? `；${r.feeKind === 'settled' ? '年末结算分成' : '预估分成'}${res.investors.length > 1 ? '（合计）' : ''} ${money(r.fee)}` : '')
     + (isYearEnd(date) ? '<br><b>12 月 31 日快照：保存后将按此进行年末结算。</b>' : '');
 }
 
@@ -524,7 +633,7 @@ function flowLive() {
   const r = res.flows.find((x) => x.__probe);
   if (!r) { el.textContent = ''; return; }
   if (r.nav == null) { el.innerHTML = `<span class="neg">${esc(r.error)}</span>`; return; }
-  const name = esc(res.settings.names[rec.owner]);
+  const name = esc(rec.owner === 'me' ? res.settings.names.me : (res.investors.find((v) => v.id === rec.owner) || {}).name || rec.owner);
   const unitsBefore = (r.unitsAfter ? (rec.type === 'deposit' ? r.unitsAfter[rec.owner] - r.units : r.unitsAfter[rec.owner] + r.units) : null);
   let line = `当时净值 <b>${navf(r.nav)}</b>`;
   if (rec.amount > 0) line += `；${rec.type === 'deposit' ? '买入' : '赎回'} <b>${units(rec.amount / r.nav)}</b> 份`;
@@ -560,7 +669,7 @@ $('flow-form').addEventListener('submit', (e) => {
 
 // ───── 列表 ─────
 function renderLists(res) {
-  const S = res.settings;
+  renderInvestors(res);
   const snapRows = data.snapshots.map((s, i) => {
     const r = res.snapshots.find((x) => x.index === i) || {};
     const shotState = !s.shot ? '<span class="muted">无</span>'
@@ -573,7 +682,7 @@ function renderLists(res) {
   $('snap-list').innerHTML = snapRows.length ? snapRows.reverse().join('') : '<tr><td colspan="7" class="left muted">暂无</td></tr>';
   const flowRows = data.flows.map((f, i) => {
     const r = res.flows.find((x) => x.index === i) || {};
-    return `<tr><td>${esc(f.date)}</td><td class="left">${esc(S.names[f.owner] || f.owner)}</td><td class="left">${f.type === 'deposit' ? '注资' : '提取'}</td>
+    return `<tr><td>${esc(f.date)}</td><td class="left">${esc(ownerLabel(res, f.owner))}</td><td class="left">${f.type === 'deposit' ? '注资' : '提取'}</td>
       <td>${money(+f.amount)}</td><td>${money(+f.valueBefore)}</td><td>${navf(r.nav)}</td>
       <td>${r.error ? `<span class="neg">${esc(r.error)}</span>` : (f.type === 'deposit' ? '+' : '−') + units(r.units)}</td>
       <td class="note">${esc(f.note || '')}</td>

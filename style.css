@@ -10,6 +10,8 @@
   --accent: #2a78d6;
   --me: #2a78d6;
   --friend: #eb6834;
+  /* 出资人配色（按登记顺序循环使用），--p0 与 --friend 相同 */
+  --p0: #eb6834; --p1: #1a9e77; --p2: #8a5cd1; --p3: #c2418a; --p4: #a88200; --p5: #8c5a3c;
   --good: #0b7a3b;
   --bad: #c4312f;
   --warn-bg: #fff4d6;
@@ -31,6 +33,7 @@
     --accent: #3987e5;
     --me: #3987e5;
     --friend: #d95926;
+    --p0: #d95926; --p1: #2bb38b; --p2: #a07ce6; --p3: #d95ba1; --p4: #d0a81c; --p5: #b07a58;
     --good: #4cc27a;
     --bad: #ef6b69;
     --warn-bg: #3a2f10;
@@ -45,6 +48,7 @@
   --bg: #111110; --surface: #1a1a19; --surface-2: #242422; --border: #3a3936;
   --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e86; --accent: #3987e5;
   --me: #3987e5; --friend: #d95926; --good: #4cc27a; --bad: #ef6b69;
+  --p0: #d95926; --p1: #2bb38b; --p2: #a07ce6; --p3: #d95ba1; --p4: #d0a81c; --p5: #b07a58;
   --warn-bg: #3a2f10; --warn-text: #f3d58a; --err-bg: #3d1716; --err-text: #f6b0ae; --grid: #2c2c2a;
 }
 
@@ -77,6 +81,7 @@ a { color: var(--accent); }
 .grid { display: grid; gap: 12px; }
 .grid.kpi { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
 .grid.two { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.grid.people { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
 .kpi .label { color: var(--text-2); font-size: 13px; }
 .kpi .value { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .kpi .sub { color: var(--muted); font-size: 12px; }

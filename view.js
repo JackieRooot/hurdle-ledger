@@ -1,5 +1,5 @@
 // view.js —— 把 calc.js 的计算结果渲染成页面（查看页与编辑页预览共用）。
-import { dayNum, isYearEnd } from './calc.js';
+import { dayNum, isYearEnd, normalizeData } from './calc.js';
 
 // ───── 格式化 ─────
 const nf2 = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -96,20 +96,31 @@ export function makeSortable(table, key) {
   apply();
 }
 
-const ownerName = (S, o) => esc(S.names[o] || o);
 const typeName = (t) => (t === 'deposit' ? '注资' : '提取');
+
+// 参与者：管理人在最后；出资人按登记顺序，颜色循环使用 --p0…--p5
+export function people(res) {
+  const S = res.settings;
+  const list = res.investors.map((v, i) => ({ ...v, color: `var(--p${i % 6})`, role: '出资人' }));
+  list.push({ id: 'me', name: S.names.me, color: 'var(--me)', role: '管理人' });
+  return list;
+}
+export const nameOf = (res, id) => (id === 'me' ? res.settings.names.me : (res.investors.find((v) => v.id === id) || {}).name || id);
+const rateNote = (v) => (v.custom && (v.custom.hurdle || v.custom.share) ? `<span class="tag">门槛 ${pct(v.hurdle)} · 分成 ${pct(v.share)}</span>` : '');
 
 // ───── 主渲染 ─────
 /**
  * @param root    容器元素
- * @param data    原始数据
+ * @param data    原始数据（新旧格式均可）
  * @param res     compute(data) 的结果
  * @param opts.onShot(snapshotRow)  点击季度行查看截图
  */
 export function renderDashboard(root, data, res, opts = {}) {
+  data = normalizeData(data);
   const S = res.settings;
   const cur = res.current;
-  const N = { me: esc(S.names.me), friend: esc(S.names.friend) };
+  const ppl = people(res);
+  const invs = ppl.filter((p) => p.id !== 'me');
   const html = [];
 
   // 提示
@@ -123,7 +134,7 @@ export function renderDashboard(root, data, res, opts = {}) {
 
   const blocked = cur.blockedBy != null;
   const unsettled = cur.unsettledYear != null;
-  const feeLabel = cur.friend.feeKind === 'settled' ? '已结算' : '预估';
+  const feeLabel = cur.feeKind === 'settled' ? '已结算' : '预估';
 
   // 账户概览
   html.push(`<h2>账户概览 <span class="muted small">截至 ${esc(cur.date)}${cur.kind === 'flow' ? '（最近一笔资金流动后）' : ''}</span></h2>
@@ -134,23 +145,24 @@ export function renderDashboard(root, data, res, opts = {}) {
     ${kpi(`相对期初收益率（${cur.year} 年）`, signed(cur.ytdReturn, pct), '与当年期初净值相比')}
   </div>`);
 
-  // 个人卡片
-  const f = cur.friend, m = cur.me;
-  const fNetFlows = sumFlows(data, res, cur.year, 'friend');
-  const mNetFlows = sumFlows(data, res, cur.year, 'me');
-  // 扣分成前：已结算的年份要把已转出的分成加回来
-  const fYtd = ok(f.start) ? f.value - f.start - fNetFlows + (f.feeKind === 'settled' ? f.fee : 0) : null;
-  const mYtd = ok(m.start) ? m.value - m.start - mNetFlows : null;
+  // 个人卡片：每位出资人一张（当年没有任何份额和资金流动的不显示），最后是管理人
   const blockNote = blocked ? `<p class="small muted">无法计算（因 ${cur.blockedBy} 年未结算）</p>` : unsettled ? `<p class="small muted">${cur.unsettledYear} 年已结束但缺少 12 月 31 日快照，无法结算，以下为截至最后记录日的预估。</p>` : '';
-  html.push(`<div class="grid two" style="margin-top:12px">
-    <div class="card person">
-      <h3><span class="swatch" style="background:var(--friend)"></span>${N.friend}（出资人）</h3>
+  const cards = [];
+  for (const v of invs) {
+    const f = cur.inv[v.id];
+    const yearFlows = flowsOf(res, cur.year, v.id);
+    if (!(f.units > 0) && !(f.start > 0) && !yearFlows.length) continue;
+    const netFlows = yearFlows.reduce((a, r) => a + (r.type === 'deposit' ? +r.amount : -r.amount), 0);
+    // 扣分成前：已结算的年份要把已转出的分成加回来
+    const ytd = ok(f.start) ? f.value - f.start - netFlows + (f.feeKind === 'settled' ? f.fee : 0) : null;
+    cards.push(`<div class="card person">
+      <h3><span class="swatch" style="background:${v.color}"></span>${esc(v.name)}（出资人）${rateNote(v)}</h3>
       ${blockNote}
       <dl class="kv">
         <dt>持有份数</dt><dd>${units(f.units)}</dd>
         <dt>当前价值</dt><dd>${money(f.value)}</dd>
-        <dt>占比</dt><dd>${pct(cur.share.friend)}</dd>
-        <dt>年初至今收益（扣分成前）</dt><dd>${signed(fYtd)}</dd>
+        <dt>占比</dt><dd>${pct(cur.share[v.id])}</dd>
+        <dt>年初至今收益（扣分成前）</dt><dd>${signed(ytd)}</dd>
         <dt>期初价值</dt><dd>${money(f.start)}</dd>
         <dt>当前高水位</dt><dd>${money(f.H)}</dd>
         <dt>年末门槛线（不提成线）</dt><dd>${money(f.TYearEnd)}</dd>
@@ -160,43 +172,48 @@ export function renderDashboard(root, data, res, opts = {}) {
         <dt>到手收益</dt><dd>${signed(f.net)}</dd>
         <dt>到手收益率</dt><dd>${signed(f.netRate, pct)}</dd>
       </dl>
-    </div>
-    <div class="card person">
-      <h3><span class="swatch" style="background:var(--me)"></span>${N.me}（管理人）</h3>
+    </div>`);
+  }
+  const m = cur.me;
+  const mNetFlows = flowsOf(res, cur.year, 'me').reduce((a, r) => a + (r.type === 'deposit' ? +r.amount : -r.amount), 0);
+  const mYtd = ok(m.start) ? m.value - m.start - mNetFlows : null;
+  cards.push(`<div class="card person">
+      <h3><span class="swatch" style="background:var(--me)"></span>${esc(S.names.me)}（管理人）</h3>
       ${blockNote}
       <dl class="kv">
         <dt>持有份数</dt><dd>${units(m.units)}</dd>
         <dt>当前价值</dt><dd>${money(m.value)}</dd>
         <dt>占比</dt><dd>${pct(cur.share.me)}</dd>
-        <dt>年初至今收益</dt><dd>${signed(blocked ? null : (cur.me.feeKind === 'settled' ? mYtd : ok(mYtd) && ok(m.fee) ? mYtd + m.fee : null))}</dd>
+        <dt>年初至今收益</dt><dd>${signed(blocked ? null : (m.feeKind === 'settled' ? mYtd : ok(mYtd) && ok(m.fee) ? mYtd + m.fee : null))}</dd>
         <dt>其中：投资收益</dt><dd>${signed(m.invGain)}</dd>
         <dt>投资收益率</dt><dd>${signed(m.invRate, pct)}</dd>
-        <dt>其中：分成收入（${feeLabel}）</dt><dd>${money(m.fee)}</dd>
+        <dt>其中：分成收入（${feeLabel}${invs.length > 1 ? '，所有出资人合计' : ''}）</dt><dd>${money(m.fee)}</dd>
         <dt>累计分成收入（已结算）</dt><dd>${money(cur.cumulativeFee)}</dd>
       </dl>
-    </div>
-  </div>`);
+    </div>`);
+  html.push(`<div class="grid people" style="margin-top:12px">${cards.join('')}</div>`);
 
   // 图表
   html.push(`<h2>走势</h2>
     <div class="card"><h3>账户净值</h3><div class="legend" id="lg-nav"></div><div class="chart" id="ch-nav"></div></div>
-    <div class="card" style="margin-top:12px"><h3>两人各自的价值</h3><div class="legend" id="lg-val"></div><div class="chart" id="ch-val"></div></div>`);
+    <div class="card" style="margin-top:12px"><h3>每个人的价值</h3><div class="legend" id="lg-val"></div><div class="chart" id="ch-val"></div></div>`);
 
   // 季度明细
   const snaps = res.snapshots.filter((r) => !r.error);
+  const valueCols = [ppl[ppl.length - 1], ...invs];
   html.push(`<h2>季度明细</h2><p class="small muted">有截图的行可点击查看截图。点表头可以排序。</p>
   <div class="table-wrap"><table id="tbl-snaps">
-    <thead><tr><th>日期</th><th class="left">期间</th><th>账户总值</th><th>净值</th><th>相对上期</th><th>相对期初</th><th>${N.me}价值</th><th>${N.friend}价值</th><th>分成</th><th class="left">截图</th><th class="left">备注</th></tr></thead>
+    <thead><tr><th>日期</th><th class="left">期间</th><th>账户总值</th><th>净值</th><th>相对上期</th><th>相对期初</th>${valueCols.map((p) => `<th>${esc(p.name)}价值</th>`).join('')}<th>分成${invs.length > 1 ? '（合计）' : ''}</th><th class="left">截图</th><th class="left">备注</th></tr></thead>
     <tbody>${snaps.length ? snaps.slice().reverse().map((r) => `
       <tr class="${r.shot ? 'clickable' : ''}" data-snap="${r.index}">
         <td>${esc(r.date)}</td><td class="left">${esc(r.period || '')}${r.settlement ? ' <span class="tag">年末结算</span>' : ''}</td>
         <td>${money(r.value)}</td><td>${navf(r.nav)}</td>
         <td>${signed(r.periodReturn, pct)}</td><td>${signed(r.ytdReturn, pct)}</td>
-        <td>${money(r.values.me)}</td><td>${money(r.values.friend)}</td>
-        <td>${r.friend.fee == null ? '—' : money(r.friend.fee) + (r.friend.feeKind === 'settled' ? '' : '<span class="muted small">（预估）</span>')}</td>
+        ${valueCols.map((p) => `<td>${money(r.values[p.id])}</td>`).join('')}
+        <td>${r.fee == null ? '—' : money(r.fee) + (r.feeKind === 'settled' ? '' : '<span class="muted small">（预估）</span>')}</td>
         <td class="left">${r.shot ? '<button class="link" type="button">查看</button>' : '<span class="muted">无</span>'}</td>
         <td class="note">${esc(r.note || '')}</td>
-      </tr>`).join('') : '<tr><td colspan="11" class="left muted">暂无季度记录</td></tr>'}</tbody>
+      </tr>`).join('') : `<tr><td colspan="${9 + valueCols.length}" class="left muted">暂无季度记录</td></tr>`}</tbody>
   </table></div>`);
 
   // 资金流动明细
@@ -205,26 +222,40 @@ export function renderDashboard(root, data, res, opts = {}) {
   <div class="table-wrap"><table id="tbl-flows">
     <thead><tr><th>日期</th><th class="left">谁</th><th class="left">类型</th><th>金额</th><th>当时总值</th><th>当时净值</th><th>买入/赎回份数</th><th class="left">备注</th></tr></thead>
     <tbody>${flows.length ? flows.slice().reverse().map((r) => `
-      <tr><td>${esc(r.date)}</td><td class="left">${ownerName(S, r.owner)}</td><td class="left">${typeName(r.type)}</td>
+      <tr><td>${esc(r.date)}</td><td class="left">${esc(nameOf(res, r.owner))}</td><td class="left">${typeName(r.type)}</td>
       <td>${money(+r.amount)}</td><td>${money(+r.valueBefore)}</td><td>${navf(r.nav)}</td>
       <td>${r.type === 'deposit' ? '+' : '−'}${units(r.units)}</td>
       <td class="note">${esc(r.note || '')}${r.hReset ? ' <span class="tag">份数归零，高水位清零</span>' : ''}</td></tr>`).join('') : '<tr><td colspan="8" class="left muted">暂无资金流动</td></tr>'}</tbody>
   </table></div>`);
 
-  // 历年结算
-  html.push(`<h2>历年结算（${N.friend}部分）</h2>
+  // 历年结算：每年每位出资人一行（当年与该出资人无关的不显示）
+  const yearRows = [];
+  for (const y of res.years.slice().reverse()) {
+    const rows = invs.filter((v) => {
+      const x = y.inv[v.id];
+      return x.start > 0 || x.H0 > 0 || x.Vf > 0 || x.flowCount > 0;
+    });
+    if (!rows.length) {
+      yearRows.push(`<tr><td>${y.year}</td><td class="left">—</td><td class="left">${yearStatus(y)}</td>${'<td>—</td>'.repeat(2)}<td class="left">无</td>${'<td>—</td>'.repeat(5)}</tr>`);
+      continue;
+    }
+    for (const v of rows) {
+      const x = y.inv[v.id];
+      yearRows.push(`<tr><td>${y.year}</td><td class="left"><span class="swatch" style="background:${v.color};margin-right:6px"></span>${esc(v.name)}</td><td class="left">${yearStatus(y)}</td>
+      <td>${money(x.start)}</td><td>${money(x.H0)}</td>
+      <td class="left">${x.flowCount ? `注资 ${money(x.deposits)} / 提取 ${money(x.withdrawals)}${x.hReset ? '（曾归零）' : ''}` : '无'}</td>
+      <td>${money(x.Vf)}</td><td>${money(x.T)}</td><td>${money(x.fee)}</td>
+      <td>${units(x.transferUnits)}</td><td>${money(x.Hend)}</td></tr>`);
+    }
+  }
+  html.push(`<h2>历年结算（出资人部分）</h2>
   <div class="table-wrap"><table>
-    <thead><tr><th>年份</th><th class="left">状态</th><th>期初价值</th><th>期初高水位</th><th class="left">年内资金流动</th><th>年末价值</th><th>门槛线</th><th>当年分成</th><th>转移份数</th><th>年末高水位</th></tr></thead>
-    <tbody>${res.years.length ? res.years.slice().reverse().map((y) => `
-      <tr><td>${y.year}</td><td class="left">${yearStatus(y)}</td>
-      <td>${money(y.friendStart)}</td><td>${money(y.H0)}</td>
-      <td class="left">${y.flowCount ? `注资 ${money(y.deposits)} / 提取 ${money(y.withdrawals)}${y.hReset ? '（曾归零）' : ''}` : '无'}</td>
-      <td>${money(y.Vf)}</td><td>${money(y.T)}</td><td>${money(y.fee)}</td>
-      <td>${units(y.transferUnits)}</td><td>${money(y.Hend)}</td></tr>`).join('') : '<tr><td colspan="10" class="left muted">暂无</td></tr>'}</tbody>
+    <thead><tr><th>年份</th><th class="left">出资人</th><th class="left">状态</th><th>期初价值</th><th>期初高水位</th><th class="left">年内资金流动</th><th>年末价值</th><th>门槛线</th><th>当年分成</th><th>转移份数</th><th>年末高水位</th></tr></thead>
+    <tbody>${yearRows.length ? yearRows.join('') : '<tr><td colspan="11" class="left muted">暂无</td></tr>'}</tbody>
   </table></div>
   <p class="small muted">“年末价值”为扣除分成前的价值。进行中的年份：年末价值、当年分成为截至最新记录的预估值；门槛线为按目前资金计算的年末门槛线。</p>`);
 
-  html.push(rulesHtml(S));
+  html.push(rulesHtml(S, res.investors));
   root.innerHTML = html.join('');
   makeSortable(root.querySelector('#tbl-snaps'), 'view-snaps');
   makeSortable(root.querySelector('#tbl-flows'), 'view-flows');
@@ -236,30 +267,33 @@ export function renderDashboard(root, data, res, opts = {}) {
   });
 
   // 图表
+  const colorOf = Object.fromEntries(ppl.map((p) => [p.id, p.color]));
   const start = { day: dayNum(data.inception.date), date: data.inception.date };
   const navPts = [{ x: start.day, date: start.date, y: 1 }, ...snaps.map((r) => ({ x: dayNum(r.date), date: r.date, y: r.nav }))];
   const markers = [];
   for (const r of flows) {
-    markers.push({ x: dayNum(r.date), date: r.date, color: r.owner === 'me' ? 'var(--me)' : 'var(--friend)', shape: r.type === 'deposit' ? 'up' : 'down',
-      label: `${r.owner === 'me' ? S.names.me : S.names.friend}${typeName(r.type)} ${money(+r.amount)}` });
+    markers.push({ x: dayNum(r.date), date: r.date, color: colorOf[r.owner] || 'var(--text-2)', shape: r.type === 'deposit' ? 'up' : 'down',
+      label: `${nameOf(res, r.owner)}${typeName(r.type)} ${money(+r.amount)}` });
   }
   for (const y of res.years) {
     if (y.status === 'settled') markers.push({ x: dayNum(`${y.year}-12-31`), date: `${y.year}-12-31`, color: 'var(--text-2)', shape: 'diamond', label: `年末分成 ${money(y.fee)}（转移 ${units(y.transferUnits)} 份）` });
   }
+  const swatches = ppl.map((p) => `<span style="color:${p.color}">■</span>${esc(p.name)}`).join(' ');
   const legendMarks = `<span><svg width="12" height="12"><path d="M6 1 L11 10 L1 10 Z" fill="var(--text-2)"/></svg>注资</span>
     <span><svg width="12" height="12"><path d="M6 11 L11 2 L1 2 Z" fill="var(--text-2)"/></svg>提取</span>
     <span><svg width="12" height="12"><path d="M6 1 L11 6 L6 11 L1 6 Z" fill="var(--text-2)"/></svg>年末分成转移</span>
-    <span class="muted">（标记颜色：<span style="color:var(--me)">■</span>${N.me} <span style="color:var(--friend)">■</span>${N.friend}）</span>`;
+    <span class="muted">（标记颜色：${swatches}）</span>`;
   root.querySelector('#lg-nav').innerHTML = `<span><span class="swatch" style="background:var(--accent)"></span>净值</span>${legendMarks}`;
-  root.querySelector('#lg-val').innerHTML = `<span><span class="swatch" style="background:var(--me)"></span>${N.me}</span><span><span class="swatch" style="background:var(--friend)"></span>${N.friend}</span>${legendMarks}`;
+  root.querySelector('#lg-val').innerHTML = ppl.map((p) => `<span><span class="swatch" style="background:${p.color}"></span>${esc(p.name)}</span>`).join('') + legendMarks;
   lineChart(root.querySelector('#ch-nav'), {
     series: [{ name: '净值', color: 'var(--accent)', points: navPts }], markers, yFmt: navf,
   });
+  const initial = { me: +data.inception.me, ...Object.fromEntries(res.investors.map((v) => [v.id, v.initial])) };
   lineChart(root.querySelector('#ch-val'), {
-    series: [
-      { name: S.names.me, color: 'var(--me)', points: [{ x: start.day, date: start.date, y: +data.inception.me }, ...snaps.map((r) => ({ x: dayNum(r.date), date: r.date, y: r.values.me }))] },
-      { name: S.names.friend, color: 'var(--friend)', points: [{ x: start.day, date: start.date, y: +data.inception.friend }, ...snaps.map((r) => ({ x: dayNum(r.date), date: r.date, y: r.values.friend }))] },
-    ],
+    series: ppl.map((p) => ({
+      name: p.name, color: p.color,
+      points: [{ x: start.day, date: start.date, y: initial[p.id] }, ...snaps.map((r) => ({ x: dayNum(r.date), date: r.date, y: r.values[p.id] }))],
+    })),
     markers, yFmt: shortMoney,
   });
 }
@@ -276,13 +310,13 @@ function yearStatus(y) {
   return esc(y.status);
 }
 
-function sumFlows(data, res, year, owner) {
-  return res.flows.filter((r) => !r.error && r.owner === owner && +String(r.date).slice(0, 4) === year)
-    .reduce((a, r) => a + (r.type === 'deposit' ? +r.amount : -r.amount), 0);
+function flowsOf(res, year, owner) {
+  return res.flows.filter((r) => !r.error && r.owner === owner && +String(r.date).slice(0, 4) === year);
 }
 
 export function describeWhere(data, e) {
   if (e.where === 'inception') return '起始设置';
+  if (e.where === 'investor') { const v = ((data && data.investors) || [])[e.index] || {}; return `出资人 ${v.name || ''}（第 ${e.index + 1} 位）`; }
   if (e.where === 'flow') { const f = (data.flows || [])[e.index] || {}; return `资金流动 ${f.date || ''}（第 ${e.index + 1} 条）`; }
   if (e.where === 'snapshot') { const s = (data.snapshots || [])[e.index] || {}; return `季度快照 ${s.date || ''}（第 ${e.index + 1} 条）`; }
   return e.where;
@@ -295,22 +329,27 @@ function shortMoney(x) {
   return nf2.format(x);
 }
 
-export function rulesHtml(S) {
+export function rulesHtml(S, investors = []) {
   const h = pct(S.hurdle), s = pct(S.share);
-  const me = esc(S.names.me), fr = esc(S.names.friend);
+  const me = esc(S.names.me);
+  const custom = investors.filter((v) => v.custom && (v.custom.hurdle || v.custom.share));
+  const customNote = custom.length
+    ? `以下出资人单独设置了比例：${custom.map((v) => `${esc(v.name)}（门槛 ${pct(v.hurdle)}，分成 ${pct(v.share)}）`).join('、')}；其他人使用默认值。`
+    : '所有出资人都使用这个默认值。';
   return `<h2>计算规则（通俗说明）</h2>
   <div class="card rules"><ol>
-    <li><b>份额法。</b>账户被分成很多“份”，每份的价格叫“净值”。开户时净值为 1：${me}投入多少元就有多少份，${fr}也一样。之后 净值 = 账户总值 ÷ 总份数。每个人的钱 = 自己的份数 × 净值，所以两人按份数共同分享涨跌。</li>
+    <li><b>份额法。</b>账户被分成很多“份”，每份的价格叫“净值”。开户时净值为 1：${me}和每位出资人投入多少元就有多少份。之后 净值 = 账户总值 ÷ 总份数。每个人的钱 = 自己的份数 × 净值，所以大家按份数共同分享涨跌。</li>
     <li><b>注资和提取。</b>每次有人存钱或取钱，先记下这笔钱进出前一刻的账户总值，算出当时的净值，再用 金额 ÷ 净值 算出买入或卖出的份数。这样别人的份数和价值都不受影响。</li>
-    <li><b>只有${fr}的部分涉及分成，</b>${me}自己的钱不涉及门槛和分成。按自然年结算，以 12 月 31 日的记录为准。</li>
-    <li><b>门槛收益 ${h}。</b>每年先保证${fr}拿到 ${h} 的收益。门槛线 = 期初高水位 ×（1 + ${h}）+ 每笔年内注资 ×（1 + ${h} × 在账天数 / 365）− 每笔年内提取 ×（1 + ${h} × 剩余天数 / 365）。开户那年的首笔投入按全年 ${h} 计算。页面上的“年末门槛线”就是不提成线：年末价值不超过它就没有分成，年内再有资金进出时它会相应变化；“当前门槛线”是按今天已过天数折算的版本，用来估算当前分成。</li>
-    <li><b>分成 ${s}。</b>年末${fr}的价值超过门槛线的部分，${me}收取 ${s}：分成 = max(0, 年末价值 − 门槛线) × ${s}。超不过门槛线就没有分成。</li>
-    <li><b>高水位线。</b>以前年份亏的钱要先补回来，补回之后的收益才算门槛和分成。高水位起点是${fr}的首笔投入；年内注资就加上、提取就减去；年末取“调整后的高水位”和“扣除分成后的年末价值”中较大的那个，作为下一年的起点。如果${fr}的份数全部取完归零，高水位清零，再投入时重新开始。</li>
-    <li><b>分成不取出。</b>年末把分成对应的份数（分成 ÷ 年末净值）从${fr}名下转到${me}名下，钱留在账户里继续投资，净值和账户总值都不变。</li>
-    <li><b>季度预估。</b>年中每次季度记录都会按同样的公式估算“如果今天结算，分成是多少”，门槛按 1 月 1 日起已过的天数折算；但开户那一年，首笔投入的门槛始终按全年 6% 满额计算，不折算。预估只供参考，不转移份数。</li>
-    <li><b>提取限制。</b>任何人提取都不能超过自己当时的价值；${fr}提取时还要留够当时的预估分成。</li>
+    <li><b>中途加入。</b>新的出资人随时可以加入：第一笔钱按当时的净值买入份数，和普通注资一样。加入那一年的门槛按这笔钱的在账天数折算。</li>
+    <li><b>只有出资人的部分涉及分成，</b>${me}自己的钱不涉及门槛和分成。每位出资人<b>各自独立</b>计算门槛、高水位和分成，互不影响。按自然年结算，以 12 月 31 日的记录为准。</li>
+    <li><b>门槛收益（默认 ${h}）。</b>${customNote}每年先保证出资人拿到门槛收益。门槛线 = 期初高水位 ×（1 + 门槛）+ 每笔年内注资 ×（1 + 门槛 × 在账天数 / 365）− 每笔年内提取 ×（1 + 门槛 × 剩余天数 / 365）。开户那年的首笔投入按全年门槛计算。页面上的“年末门槛线”就是不提成线：年末价值不超过它就没有分成，年内再有资金进出时它会相应变化；“当前门槛线”是按今天已过天数折算的版本，用来估算当前分成。</li>
+    <li><b>分成（默认 ${s}）。</b>年末出资人的价值超过门槛线的部分，${me}按分成比例收取：分成 = max(0, 年末价值 − 门槛线) × 分成比例。超不过门槛线就没有分成。</li>
+    <li><b>高水位线。</b>以前年份亏的钱要先补回来，补回之后的收益才算门槛和分成。高水位起点是出资人的首笔投入；年内注资就加上、提取就减去；年末取“调整后的高水位”和“扣除分成后的年末价值”中较大的那个，作为下一年的起点。如果某位出资人的份数全部取完归零，他的高水位清零，再投入时重新开始。</li>
+    <li><b>分成不取出。</b>年末把分成对应的份数（分成 ÷ 年末净值）从出资人名下转到${me}名下，钱留在账户里继续投资，净值和账户总值都不变。</li>
+    <li><b>季度预估。</b>年中每次季度记录都会按同样的公式估算“如果今天结算，分成是多少”，门槛按 1 月 1 日起已过的天数折算；但开户那一年，开户时首笔投入的门槛始终按全年满额计算，不折算。预估只供参考，不转移份数。</li>
+    <li><b>提取限制。</b>任何人提取都不能超过自己当时的价值；出资人提取时还要留够自己当时的预估分成。</li>
     <li><b>缺少年末记录。</b>如果某年没有 12 月 31 日的记录，该年无法结算，之后年份的门槛、高水位和分成也无法计算，页面会明确提示，不做估算。</li>
-    <li><b>收益率。</b>相对上期 = 本期净值 ÷ 上期净值 − 1；相对期初 = 当前净值 ÷ 当年年初净值 − 1。${fr}的到手收益 = 当前价值 − 分成 − 期初价值 − 年内净注资；到手收益率 = 到手收益 ÷（期初价值 + 年内每笔注资/提取按在账时间比例折算后的金额）。</li>
+    <li><b>收益率。</b>相对上期 = 本期净值 ÷ 上期净值 − 1；相对期初 = 当前净值 ÷ 当年年初净值 − 1。出资人的到手收益 = 当前价值 − 分成 − 期初价值 − 年内净注资；到手收益率 = 到手收益 ÷（期初价值 + 年内每笔注资/提取按在账时间比例折算后的金额）。</li>
   </ol></div>`;
 }
 
