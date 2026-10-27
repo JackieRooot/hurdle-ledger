@@ -6,15 +6,16 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <title>账本编辑</title>
-<link rel="stylesheet" href="style.css?v=20261010-1">
+<link rel="stylesheet" href="style.css?v=20261027-1">
 <!-- 版本号：每次修改 js/css 时一起改（index.html 和 editor.html 保持一致），让浏览器不会混用新旧文件 -->
 <script type="importmap">
 { "imports": {
-  "./calc.js": "./calc.js?v=20261010-1",
-  "./crypto.js": "./crypto.js?v=20261010-1",
-  "./view.js": "./view.js?v=20261010-1",
-  "./github.js": "./github.js?v=20261010-1",
-  "./zip.js": "./zip.js?v=20261010-1"
+  "./calc.js": "./calc.js?v=20261027-1",
+  "./crypto.js": "./crypto.js?v=20261027-1",
+  "./view.js": "./view.js?v=20261027-1",
+  "./github.js": "./github.js?v=20261027-1",
+  "./zip.js": "./zip.js?v=20261027-1",
+  "./ocr.js": "./ocr.js?v=20261027-1"
 } }
 </script>
 <script>
@@ -40,6 +41,9 @@ window.addEventListener('error', function (e) {
   label.check { display: block; margin: 8px 0; font-size: 14px; }
   details.card > summary { cursor: pointer; }
   pre.files { background: var(--surface-2); padding: 10px; border-radius: 8px; white-space: pre-wrap; font-size: 13px; }
+  .live.neg { color: var(--bad); }
+  #sn-ocr button { min-height: 32px; padding: 4px 10px; margin-left: 6px; }
+  input.ocr-filled { outline: 2px solid var(--accent); outline-offset: 1px; }
 </style>
 </head>
 <body>
@@ -138,6 +142,7 @@ window.addEventListener('error', function (e) {
         <div class="small muted" id="sn-preview-info"></div>
         <button type="button" id="sn-preview-remove">移除截图</button>
       </div>
+      <div class="live hidden" id="sn-ocr"></div>
       <label class="field" style="margin-top:10px"><span>备注</span><input id="sn-note"></label>
       <div class="live" id="sn-live"></div>
       <div class="row form-actions">
@@ -225,6 +230,7 @@ import { encryptJSON, decryptJSON, encryptBytes, decryptBytes, imageMime, WrongP
 import { renderDashboard, money, units, navf, esc, describeWhere, setupPasswordFields, makeSortable } from './view.js';
 import { makeZip } from './zip.js';
 import { GitHubRepo, detectRepo, gitBlobSha } from './github.js';
+import { recognizeAssets } from './ocr.js';
 
 const $ = (id) => document.getElementById(id);
 setupPasswordFields();
@@ -435,6 +441,7 @@ let previewUrl = null;
 function updateShotPreview() {
   if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
   const file = $('sn-file').files[0];
+  recognizeShot(file);
   $('sn-preview').classList.toggle('hidden', !file);
   if (!file) { $('sn-preview-img').removeAttribute('src'); return; }
   previewUrl = URL.createObjectURL(file);
@@ -452,6 +459,57 @@ $('sn-preview-img').addEventListener('click', () => {
   $('shot-title').textContent = '待保存的截图';
   $('shot-body').innerHTML = `<img alt="截图" src="${previewUrl}">`;
   $('shot-dlg').showModal();
+});
+
+// 选择或粘贴截图后自动识别总资产，填入“账户总值”（识别在本机进行，见 ocr.js）
+let ocrRun = 0, ocrValue = null;
+function showOcr(html, kind = 'muted') {
+  const el = $('sn-ocr');
+  el.className = `live ${kind}${html ? '' : ' hidden'}`;
+  el.innerHTML = html;
+}
+function fillOcrValue(v) {
+  const el = $('sn-value');
+  el.value = v.toFixed(2);
+  el.classList.add('ocr-filled');
+  el.dispatchEvent(new Event('input'));
+}
+$('sn-value').addEventListener('input', (e) => { if (e.isTrusted) e.target.classList.remove('ocr-filled'); });
+async function recognizeShot(file) {
+  const run = ++ocrRun, stale = () => run !== ocrRun;
+  ocrValue = null;
+  showOcr('');
+  $('sn-value').classList.remove('ocr-filled');
+  if (!file) return;
+  const before = $('sn-value').value;
+  try {
+    const r = await recognizeAssets(file, { stale, onStatus: (t) => { if (!stale()) showOcr(esc(t)); } });
+    if (!r || stale()) return;
+    if (r.error) return showOcr(esc(r.error), 'neg');
+    const parts = r.parts.map((p) => `${esc(p.label)} ${money(p.value)}`).join(' + ');
+    const check = {
+      ok: `✓ 与分项核对一致（${parts}）。`,
+      mismatch: `⚠ 识别到的分项合计 ${money(r.partsSum)}（${parts}）与总资产不一致，可能有分项没识别出来或读错，请对照截图核对。`,
+      none: '⚠ 没能与分项核对，请对照截图核对。',
+    }[r.check];
+    const warn = r.warnings.map((w) => `<br><span class="neg">⚠ ${esc(w)}</span>`).join('');
+    const kind = r.check === 'ok' ? 'muted' : 'neg';
+    if ($('sn-value').value !== before) {
+      // 识别期间手动改过账户总值：不覆盖
+      ocrValue = r.value;
+      return showOcr(`识别到总资产 <b>${money(r.value)}</b>，但识别期间账户总值已被手动修改，没有自动填入。<button type="button" id="sn-ocr-use">改用识别值</button><br>${check}${warn}`, kind);
+    }
+    fillOcrValue(r.value);
+    const old = num(before);
+    showOcr(`已从截图识别并填入账户总值 <b>${money(r.value)}</b>${old >= 0 && Math.abs(old - r.value) >= 0.005 ? `（原值 ${money(old)}）` : ''}。${check}${warn}`, kind);
+  } catch (err) {
+    if (!stale()) showOcr('截图识别失败，请手动填写账户总值。' + esc(err.message || String(err)), 'neg');
+  }
+}
+$('sn-ocr').addEventListener('click', (e) => {
+  if (e.target.id !== 'sn-ocr-use' || ocrValue == null) return;
+  fillOcrValue(ocrValue);
+  e.target.remove();
 });
 
 function shotName(period, date, idx) {
